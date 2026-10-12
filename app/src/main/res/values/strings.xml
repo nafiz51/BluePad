@@ -1,0 +1,6 @@
+<resources><string name="app_name">BluePad</string><string name="pair_first">Pair your computer in Android Bluetooth Settings first.</string>
+<string name="touchpad">Touchpad — drag to move</string>
+<string name="permission_required">Grant Nearby devices permission.</string>
+<string name="enable_unavailable">Bluetooth enable request unavailable. Use Android Settings.</string>
+<string name="left_click">Left click</string>
+</resources>
