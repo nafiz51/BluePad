@@ -7,6 +7,7 @@ import android.bluetooth.BluetoothDevice
 import android.content.*
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.WindowInsets
 import android.widget.*
 import com.bluepad.bluetooth.BluetoothPermissions
@@ -15,6 +16,7 @@ import com.bluepad.ui.TouchpadView
 import com.bluepad.ui.LeftClickButton
 
 class MainActivity : Activity() {
+    private companion object { const val TAG = "BluePadUi" }
     private lateinit var hid: HidManager
     private lateinit var status: TextView
     private lateinit var devices: Spinner
@@ -24,8 +26,9 @@ class MainActivity : Activity() {
     private lateinit var pad: TouchpadView
     private var paired = emptyList<BluetoothDevice>()
     private var visible = false
+    private fun trace(message: String) { if (Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG, message) }
     private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) { hid.stop(); if (visible) hid.start() }
+        override fun onReceive(context: Context, intent: Intent) { trace("broadcast action=${intent.action} visible=$visible; restarting HID"); hid.stop(); if (visible) hid.start() }
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,12 +63,12 @@ class MainActivity : Activity() {
         view.setPadding(24 + insets.systemWindowInsetLeft,24 + insets.systemWindowInsetTop,24 + insets.systemWindowInsetRight,24 + insets.systemWindowInsetBottom)
     }
     override fun onStart() {
-        super.onStart(); visible = true
+        super.onStart(); visible = true; trace("onStart")
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED).apply { addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED) }
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED) else registerReceiver(receiver, filter)
         hid.start()
     }
-    override fun onStop() { visible = false; hid.stop(); unregisterReceiver(receiver); super.onStop() }
+    override fun onStop() { trace("onStop"); visible = false; hid.stop(); unregisterReceiver(receiver); super.onStop() }
     override fun onDestroy() { hid.destroy(); super.onDestroy() }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode,permissions,grantResults)
@@ -85,6 +88,7 @@ class MainActivity : Activity() {
         disconnect.isEnabled = visible && (state.connected || state.busy)
         pad.isEnabled = visible && state.connected
         click.isEnabled = visible && state.connected
+        trace("render visible=$visible connected=${state.connected} registered=${state.registered} padEnabled=${pad.isEnabled} clickEnabled=${click.isEnabled}")
         if (!click.isEnabled) click.isPressed = false
     }
 }
