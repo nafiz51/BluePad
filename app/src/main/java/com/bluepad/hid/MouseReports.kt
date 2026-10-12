@@ -9,8 +9,9 @@ object MouseReports {
         0x05,0x01,0x09,0x30,0x09,0x31,0x09,0x38,0x15,0x81,0x25,0x7F,
         0x75,0x08,0x95,0x03,0x81,0x06,0xC0,0xC0
     ).map { it.toByte() }.toByteArray()
-    fun encode(pressed: Boolean, dx: Int = 0, dy: Int = 0, wheel: Int = 0) = byteArrayOf(
-        if (pressed) 1 else 0, dx.coerceIn(-127,127).toByte(), dy.coerceIn(-127,127).toByte(), wheel.coerceIn(-127,127).toByte()
+    fun encode(pressed: Boolean, dx: Int = 0, dy: Int = 0, wheel: Int = 0) = encode(if (pressed) 1 else 0, dx, dy, wheel)
+    fun encode(buttons: Int, dx: Int = 0, dy: Int = 0, wheel: Int = 0) = byteArrayOf(
+        (buttons and 7).toByte(), dx.coerceIn(-127,127).toByte(), dy.coerceIn(-127,127).toByte(), wheel.coerceIn(-127,127).toByte()
     )
     /** Bluetooth Classic boot mouse has a fixed ID 2; report mode is unnumbered. */
     fun reportId(boot: Boolean) = if (boot) 2 else 0
@@ -23,10 +24,21 @@ object MouseReports {
 
 /** Failed sends clear local state; the transport attempts a neutral report or disconnects. */
 class MouseButtons {
-    var pressed = false
-        private set
-    fun press(): ByteArray { pressed = true; return MouseReports.encode(true) }
-    fun release(): ByteArray { pressed = false; return MouseReports.encode(false) }
-    fun scroll(wheel: Int) = MouseReports.encode(pressed, wheel = wheel)
-    fun move(dx: Int, dy: Int) = MouseReports.encode(pressed, dx, dy)
+    private val owners = mutableMapOf<String, Int>()
+    val mask get() = owners.values.fold(0) { result, value -> result or value }
+    val pressed get() = mask and 1 != 0
+    fun change(owner: String, button: Int, down: Boolean): ByteArray {
+        require(button == 1 || button == 2)
+        val current = owners[owner] ?: 0
+        val next = if (down) current or button else current and button.inv()
+        if (next == 0) owners.remove(owner) else owners[owner] = next
+        return MouseReports.encode(mask)
+    }
+    fun physicalHeld() = (owners["physical"] ?: 0) != 0
+    fun press() = change("physical",1,true)
+    fun releasePhysical() = change("physical",1,false)
+    /** Disconnect, shutdown and failure clear every owner. */
+    fun release(): ByteArray { owners.clear(); return MouseReports.encode(0) }
+    fun scroll(wheel: Int) = MouseReports.encode(mask, wheel = wheel)
+    fun move(dx: Int, dy: Int) = MouseReports.encode(mask, dx, dy)
 }

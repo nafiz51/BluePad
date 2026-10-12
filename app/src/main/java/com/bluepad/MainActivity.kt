@@ -52,7 +52,7 @@ class MainActivity : Activity() {
         devices = Spinner(this); root.addView(devices)
         connect = button("Connect") { paired.getOrNull(devices.selectedItemPosition)?.let { hid.connect(it) } }
         disconnect = button("Disconnect") { hid.disconnect() }
-        pad = TouchpadView(this, { dx,dy -> hid.move(dx,dy) }, { wheel -> hid.scroll(wheel) })
+        pad = TouchpadView(this, { dx,dy -> hid.move(dx,dy) }, { wheel -> hid.scroll(wheel) }, { mask, down -> hid.gestureButton(mask,down) })
         val preferences = getSharedPreferences("touchpad", MODE_PRIVATE)
         val initialSensitivity = preferences.getFloat("sensitivity", 1f).coerceIn(0.5f,3f)
         pad.sensitivity = initialSensitivity
@@ -76,7 +76,7 @@ class MainActivity : Activity() {
             })
         })
         root.addView(pad, LinearLayout.LayoutParams(-1,0,1f))
-        click = LeftClickButton(this, { hid.press() }, { hid.release() }).apply { setText(R.string.left_click) }
+        click = LeftClickButton(this, { pad.setPhysicalButtonHeld(true); hid.press() }, { pad.setPhysicalButtonHeld(false); hid.release() }).apply { setText(R.string.left_click) }
         root.addView(click)
         setContentView(root)
         render(HidManager.State())
@@ -91,7 +91,7 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED) else registerReceiver(receiver, filter)
         hid.start()
     }
-    override fun onStop() { trace("onStop"); getSharedPreferences("touchpad", MODE_PRIVATE).edit().putFloat("sensitivity", pad.sensitivity).apply(); visible = false; hid.stop(); unregisterReceiver(receiver); super.onStop() }
+    override fun onStop() { trace("onStop"); getSharedPreferences("touchpad", MODE_PRIVATE).edit().putFloat("sensitivity", pad.sensitivity).apply(); visible = false; pad.isEnabled = false; click.isEnabled = false; hid.stop(); unregisterReceiver(receiver); super.onStop() }
     override fun onDestroy() { hid.destroy(); super.onDestroy() }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode,permissions,grantResults)

@@ -76,4 +76,17 @@ class MouseReportsTest {
         assertArrayEquals(byteArrayOf(1,-20,12), MouseReports.forProtocol(report, true))
         assertArrayEquals(byteArrayOf(1,-20,12,3), MouseReports.forProtocol(report, false))
     }
+    @Test fun rightButtonAndIndependentOwnersHaveOrderedReports() {
+        val buttons = MouseButtons()
+        assertArrayEquals(byteArrayOf(2,0,0,0),buttons.change("gesture",2,true))
+        assertArrayEquals(byteArrayOf(0,0,0,0),buttons.change("gesture",2,false))
+        buttons.press()
+        assertArrayEquals(byteArrayOf(3,0,0,0),buttons.change("gesture",2,true))
+        assertArrayEquals(byteArrayOf(1,0,0,0),buttons.change("gesture",2,false))
+        buttons.change("gesture",1,true)
+        assertArrayEquals(byteArrayOf(1,0,0,0),buttons.releasePhysical())
+        assertArrayEquals(byteArrayOf(0,0,0,0),buttons.change("gesture",1,false))
+        buttons.press(); buttons.change("gesture",2,true)
+        assertArrayEquals(byteArrayOf(0,0,0,0),buttons.release())
+    }
 }

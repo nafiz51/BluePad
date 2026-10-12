@@ -136,12 +136,22 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
             if (state.connected) send(buttons.move(dx, dy)) else trace("move dropped: disconnected")
         }
     }
-    fun scroll(wheel: Int) = work {
-        if (state.connected && !bootProtocol) send(buttons.scroll(wheel))
-        else trace("scroll dropped connected=${state.connected} boot=$bootProtocol")
+    fun scroll(wheel: Int) {
+        val queuedAt = SystemClock.elapsedRealtime()
+        work {
+            if (Log.isLoggable(TAG, Log.DEBUG)) trace("scroll wheel=$wheel queueMs=${SystemClock.elapsedRealtime() - queuedAt} connected=${state.connected} boot=$bootProtocol")
+            if (state.connected && !bootProtocol) send(buttons.scroll(wheel))
+            else trace("scroll dropped connected=${state.connected} boot=$bootProtocol")
+        }
     }
     fun press() = work { trace("press connected=${state.connected}"); if (state.connected) send(buttons.press()) }
-    fun release() = work { trace("release connected=${state.connected}"); releaseInternal() }
+    fun release() = work {
+        val report = buttons.releasePhysical()
+        if (state.connected) send(report)
+    }
+    fun gestureButton(mask: Int, down: Boolean) = work {
+        if (state.connected && (!down || !buttons.physicalHeld())) send(buttons.change("gesture",mask,down))
+    }
     private fun releaseInternal() { val report = buttons.release(); if (state.connected) send(report) }
     private fun send(report: ByteArray) {
         val payload = MouseReports.forProtocol(report, bootProtocol)

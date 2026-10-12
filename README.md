@@ -1,6 +1,6 @@
 # BluePad — Android Bluetooth mouse
 
-Native offline Android Bluetooth Classic HID mouse prototype. Android 9/API 28 minimum; compile/target API 36. No Internet permission, runtime libraries, root, or PC companion software. Single-finger pointer movement, adjustable sensitivity, two-finger vertical scrolling, a locked one-finger right-edge scroll strip and left click are supported. Keyboard, horizontal scrolling, advanced gestures and background operation remain outside the current scope.
+Native offline Android Bluetooth Classic HID mouse prototype. Android 9/API 28 minimum; compile/target API 36. No Internet permission, runtime libraries, root, or PC companion software. Single-finger pointer movement, adjustable sensitivity, two-finger vertical scrolling, a locked one-finger right-edge scroll strip and left click are supported. V4 adds main-area tap-to-left-click, two-finger tap-to-right-click and double-tap-and-drag (final hardware tests passed on Vivo/Ubuntu). Keyboard, horizontal scrolling, other gestures and background operation remain outside the current scope.
 
 ## Build
 
@@ -46,3 +46,5 @@ Bluetooth send success means the request was accepted, not proof that the host r
 The user has confirmed Bluetooth connection, cursor movement, adjustable sensitivity, left click and two-finger scrolling on a real Vivo phone with Ubuntu. Scrolling required refreshing Bluetooth pairing and HID service recognition; see [touchpad update notes](docs/TOUCHPAD_UPDATE.md) for protocol changes, verification and recovery. Further features require approval.
 
 The user confirmed V3 right-edge one-finger scrolling, normal cursor movement, two-finger scrolling and existing touchpad features on Vivo/Ubuntu, with no additional issues observed; see [scroll strip notes](docs/SCROLL_STRIP.md).
+
+V4 implementation and validation notes: [advanced gestures](docs/V4_GESTURES.md). Final V4 hardware testing passed on Vivo/Ubuntu, including the [scrolling refinement](docs/V4_SCROLL_OPTIMIZATION.md). Scrolling remains less smooth than a laptop precision touchpad; this is an accepted V4 limitation.
