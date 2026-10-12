@@ -173,6 +173,11 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
     fun gestureButton(mask: Int, down: Boolean) = work {
         if (state.connected && (!down || !buttons.physicalHeld())) send(buttons.change("gesture",mask,down))
     }
+    fun physicalButton(mask: Int, down: Boolean) = work {
+        if (down && !state.connected) return@work
+        val report = buttons.change("physical",mask,down)
+        if (state.connected) send(report)
+    }
     fun keyDown(usage: Int) = work { if (state.connected) keyboard.press(usage)?.let { sendKeyboard(it) }; publish() }
     fun keyUp(usage: Int) = work { keyboard.release(usage)?.let { sendKeyboard(it) }; publish() }
     fun modifier(bit: Int, down: Boolean) = work { if (state.connected) keyboard.modifier(bit,down)?.let { sendKeyboard(it) }; publish() }

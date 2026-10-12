@@ -2,6 +2,25 @@ package com.bluepad.hid
 import org.junit.Assert.*
 import org.junit.Test
 class MouseReportsTest {
+    @Test fun physicalRightHoldUsesRightBitDuringMotionAndReleasesIndependently() {
+        val buttons = MouseButtons()
+        assertArrayEquals(byteArrayOf(2,0,0,0),buttons.change("physical",2,true))
+        assertTrue(buttons.physicalHeld())
+        assertArrayEquals(byteArrayOf(2,12,-3,0),buttons.move(12,-3))
+        assertArrayEquals(byteArrayOf(3,0,0,0),buttons.press())
+        assertArrayEquals(byteArrayOf(2,0,0,0),buttons.releasePhysical())
+        assertTrue(buttons.physicalHeld())
+        assertArrayEquals(byteArrayOf(0,0,0,0),buttons.change("physical",2,false))
+        assertFalse(buttons.physicalHeld())
+    }
+    @Test fun physicalLeftRemainsDownAfterRightReleaseAndCleanupClearsBoth() {
+        val buttons = MouseButtons(); buttons.press(); buttons.change("physical",2,true)
+        assertArrayEquals(byteArrayOf(1,0,0,0),buttons.change("physical",2,false))
+        assertArrayEquals(byteArrayOf(1,5,6,0),buttons.move(5,6))
+        buttons.change("physical",2,true)
+        assertArrayEquals(byteArrayOf(0,0,0,0),buttons.release())
+        assertFalse(buttons.physicalHeld())
+    }
     @Test fun neutralReport() { assertArrayEquals(byteArrayOf(0,0,0,0), MouseReports.encode(false)) }
     @Test fun signedCoordinatesAndClamping() { assertArrayEquals(byteArrayOf(1,127,-127,0), MouseReports.encode(true,1000,-1000)); assertArrayEquals(byteArrayOf(0,-1,1,0),MouseReports.encode(false,-1,1)) }
     @Test fun releaseClearsButtonAfterCancellationOrFailure() {

@@ -52,3 +52,5 @@ V4 implementation and validation notes: [advanced gestures](docs/V4_GESTURES.md)
 V5A is hardware-verified by the user and recorded by the local annotated tag `bluetooth-mouse-keyboard-working-v5a`; see [keyboard foundation](docs/V5A_KEYBOARD_FOUNDATION.md) and [connection audit](docs/V5A_CONNECTION_AUDIT.md). The audit preserves earlier failure evidence without claiming a proven host-side root cause.
 
 Pointer sensitivity now ranges from 0.5× to 8× in 0.1× steps (default 1×), preserving existing saved values; scrolling speed is independent. The current V5A version has been hardware-verified by the user.
+
+V5B replaces tabs with a touchpad-first screen and a keyboard toolbar toggle. The touchpad remains active above the default Android IME; the Bluetooth status control opens device connection controls, while settings contains sensitivity. Compact Left Click/Right Click buttons support holds below the pad. See [adaptive layout and hardware checks](docs/V5B_ADAPTIVE_LAYOUT.md). V5B passed real-device testing as confirmed by the user and is recorded by the local annotated tag `bluetooth-touchpad-keyboard-working-v5b`; the existing US HID text limitations remain.

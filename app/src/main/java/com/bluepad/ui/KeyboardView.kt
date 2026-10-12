@@ -116,38 +116,43 @@ class KeyboardView @JvmOverloads constructor(context: Context,
     init {
         val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         addView(content)
-        content.addView(TextView(context).apply { setText(R.string.keyboard_help) })
         field.apply {
             hint = context.getString(R.string.ime_hint)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
                 InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or InputType.TYPE_TEXT_FLAG_MULTI_LINE
             imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_ACTION_NONE
-            isSaveEnabled = false; isLongClickable = false; minLines = 2
+            isSaveEnabled = false; isLongClickable = false; minLines = 1; maxLines = 1
         }
-        content.addView(field); content.addView(feedback)
-        val modifierRow = LinearLayout(context); content.addView(modifierRow)
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        content.addView(field,LinearLayout.LayoutParams(-1,dp(48)))
+        feedback.maxLines = 1; feedback.textSize = 12f
+        content.addView(feedback)
+        val strip = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false }
+        val modifierRow = LinearLayout(context)
+        strip.addView(modifierRow)
+        content.addView(strip,LinearLayout.LayoutParams(-1,dp(48)))
         for ((label,bit) in listOf("Ctrl" to KeyboardReports.CTRL,"Alt" to KeyboardReports.ALT,
             "Shift" to KeyboardReports.SHIFT,"Super" to KeyboardReports.SUPER)) {
             val toggle = ToggleButton(context).apply {
                 textOn = "$label ●"; textOff = label; isChecked = false
-                minWidth = 0; minimumWidth = 0; setPadding(0,0,0,0)
+                minWidth = 0; minimumWidth = 0; setPadding(0,0,0,0); isFocusable = false
                 setOnCheckedChangeListener { _,checked -> if (!rendering) modifier(bit,checked) }
             }
             modifiers[bit] = toggle; controls.add(toggle)
-            modifierRow.addView(toggle,LinearLayout.LayoutParams(0,-2,1f))
+            modifierRow.addView(toggle,LinearLayout.LayoutParams(dp(64),dp(48)))
         }
-        for (group in UsKeyboard.special.entries.chunked(5)) {
-            val row = LinearLayout(context); content.addView(row)
-            for ((label,usage) in group) {
-                val button = Button(context).apply {
-                    text = label; isAllCaps = false; minWidth = 0; minimumWidth = 0; setPadding(0,0,0,0)
-                    textSize = 13f; setOnClickListener { bridge.finish(); tap(UsKeyboard.Stroke(usage)) }
-                }
-                controls.add(button); row.addView(button,LinearLayout.LayoutParams(0,-2,1f))
+        for ((label,usage) in UsKeyboard.special) {
+            val button = Button(context).apply {
+                text = label; isAllCaps = false; minWidth = 0; minimumWidth = 0; setPadding(0,0,0,0)
+                textSize = 13f; isFocusable = false
+                setOnClickListener { bridge.finish(); tap(UsKeyboard.Stroke(usage)) }
             }
+            controls.add(button)
+            modifierRow.addView(button,LinearLayout.LayoutParams(dp(64),dp(48)))
         }
-        val release = Button(context).apply { setText(R.string.release_keys); setOnClickListener { bridge.reset(); field.text.clear(); context.getSystemService(InputMethodManager::class.java).restartInput(field); clear() } }
-        controls.add(release); content.addView(release)
+        val release = Button(context).apply { isFocusable = false; setText(R.string.release_keys); setOnClickListener { bridge.reset(); field.text.clear(); context.getSystemService(InputMethodManager::class.java).restartInput(field); clear() } }
+        controls.add(release); modifierRow.addView(release,LinearLayout.LayoutParams(dp(132),dp(48)))
     }
     fun openIme() {
         field.requestFocus()
