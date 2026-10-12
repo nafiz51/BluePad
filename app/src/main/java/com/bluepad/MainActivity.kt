@@ -9,6 +9,9 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.WindowInsets
+import android.view.View
+import com.bluepad.ui.KeyboardView
+import com.bluepad.ui.PointerSensitivity
 import android.widget.*
 import com.bluepad.bluetooth.BluetoothPermissions
 import com.bluepad.bluetooth.HidManager
@@ -24,6 +27,10 @@ class MainActivity : Activity() {
     private lateinit var disconnect: Button
     private lateinit var click: Button
     private lateinit var pad: TouchpadView
+    private lateinit var keyboardView: KeyboardView
+    private lateinit var touchPanel: LinearLayout
+    private var keyboardShowing = false
+    private var lastState = HidManager.State()
     private var paired = emptyList<BluetoothDevice>()
     private var visible = false
     private fun trace(message: String) { if (Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG, message) }
@@ -52,21 +59,43 @@ class MainActivity : Activity() {
         devices = Spinner(this); root.addView(devices)
         connect = button("Connect") { paired.getOrNull(devices.selectedItemPosition)?.let { hid.connect(it) } }
         disconnect = button("Disconnect") { hid.disconnect() }
+        val tabs = LinearLayout(this)
+        root.addView(tabs)
+        touchPanel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val content = FrameLayout(this)
+        root.addView(content,LinearLayout.LayoutParams(-1,0,1f))
+        content.addView(touchPanel,FrameLayout.LayoutParams(-1,-1))
+        keyboardView = KeyboardView(this,{ hid.keyTap(it) },{ bit,down -> hid.modifier(bit,down) },{ hid.releaseInputs() })
+        content.addView(keyboardView,FrameLayout.LayoutParams(-1,-1))
+        fun selectKeyboard(show: Boolean) {
+            keyboardView.closeIme()
+            pad.isEnabled = false; click.isEnabled = false
+            hid.releaseInputs()
+            keyboardShowing = show
+            touchPanel.visibility = if (show) View.GONE else View.VISIBLE
+            keyboardView.visibility = if (show) View.VISIBLE else View.GONE
+            render(lastState.copy(modifiers = 0))
+            if (show) keyboardView.openIme()
+        }
+        for ((label,show) in listOf(getString(R.string.touchpad_tab) to false,getString(R.string.keyboard_tab) to true)) {
+            tabs.addView(Button(this).apply { text = label; setOnClickListener { selectKeyboard(show) } },LinearLayout.LayoutParams(0,-2,1f))
+        }
+        keyboardView.visibility = View.GONE
         pad = TouchpadView(this, { dx,dy -> hid.move(dx,dy) }, { wheel -> hid.scroll(wheel) }, { mask, down -> hid.gestureButton(mask,down) })
         val preferences = getSharedPreferences("touchpad", MODE_PRIVATE)
-        val initialSensitivity = preferences.getFloat("sensitivity", 1f).coerceIn(0.5f,3f)
+        val initialSensitivity = PointerSensitivity.restore(preferences.getFloat("sensitivity", PointerSensitivity.DEFAULT))
         pad.sensitivity = initialSensitivity
         val sensitivityLabel = TextView(this)
         fun showSensitivity(value: Float) { sensitivityLabel.text = getString(R.string.sensitivity, value) }
         showSensitivity(initialSensitivity)
-        root.addView(sensitivityLabel)
-        root.addView(SeekBar(this).apply {
-            max = 25
-            progress = ((initialSensitivity - 0.5f) * 10).toInt()
+        touchPanel.addView(sensitivityLabel)
+        touchPanel.addView(SeekBar(this).apply {
+            max = PointerSensitivity.SLIDER_MAX
+            progress = PointerSensitivity.progress(initialSensitivity)
             contentDescription = getString(R.string.pointer_sensitivity)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
-                    pad.sensitivity = 0.5f + progress / 10f
+                    pad.sensitivity = PointerSensitivity.value(progress)
                     showSensitivity(pad.sensitivity)
                 }
                 override fun onStartTrackingTouch(bar: SeekBar) {}
@@ -75,9 +104,9 @@ class MainActivity : Activity() {
                 }
             })
         })
-        root.addView(pad, LinearLayout.LayoutParams(-1,0,1f))
+        touchPanel.addView(pad, LinearLayout.LayoutParams(-1,0,1f))
         click = LeftClickButton(this, { pad.setPhysicalButtonHeld(true); hid.press() }, { pad.setPhysicalButtonHeld(false); hid.release() }).apply { setText(R.string.left_click) }
-        root.addView(click)
+        touchPanel.addView(click)
         setContentView(root)
         render(HidManager.State())
     }
@@ -91,7 +120,7 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED) else registerReceiver(receiver, filter)
         hid.start()
     }
-    override fun onStop() { trace("onStop"); getSharedPreferences("touchpad", MODE_PRIVATE).edit().putFloat("sensitivity", pad.sensitivity).apply(); visible = false; pad.isEnabled = false; click.isEnabled = false; hid.stop(); unregisterReceiver(receiver); super.onStop() }
+    override fun onStop() { trace("onStop"); getSharedPreferences("touchpad", MODE_PRIVATE).edit().putFloat("sensitivity", pad.sensitivity).apply(); visible = false; pad.isEnabled = false; click.isEnabled = false; keyboardView.closeIme(); keyboardView.render(false,0); hid.stop(); unregisterReceiver(receiver); super.onStop() }
     override fun onDestroy() { hid.destroy(); super.onDestroy() }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode,permissions,grantResults)
@@ -99,6 +128,7 @@ class MainActivity : Activity() {
     }
     @SuppressLint("MissingPermission", "SetTextI18n")
     private fun render(state: HidManager.State) {
+        lastState = state
         status.text = "Bluetooth: ${state.bluetooth}\nHID: ${state.hid}\nHost: ${state.connection}\n${state.error}"
         if (paired != state.devices) {
             val previous = paired.getOrNull(devices.selectedItemPosition)?.address
@@ -109,9 +139,10 @@ class MainActivity : Activity() {
         connect.isEnabled = visible && state.registered && !state.connected && !state.busy && paired.isNotEmpty()
         devices.isEnabled = !state.connected && !state.busy
         disconnect.isEnabled = visible && (state.connected || state.busy)
-        pad.isEnabled = visible && state.connected
-        click.isEnabled = visible && state.connected
+        pad.isEnabled = visible && state.connected && !keyboardShowing
+        click.isEnabled = visible && state.connected && !keyboardShowing
         trace("render visible=$visible connected=${state.connected} registered=${state.registered} padEnabled=${pad.isEnabled} clickEnabled=${click.isEnabled}")
+        keyboardView.render(visible && state.connected && keyboardShowing,state.modifiers)
         if (!click.isEnabled) click.isPressed = false
     }
 }

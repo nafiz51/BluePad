@@ -5,4 +5,11 @@
 <string name="left_click">Left click</string>
 <string name="pointer_sensitivity">Pointer sensitivity</string>
 <string name="sensitivity">Pointer sensitivity: %1$.1f×</string>
+<string name="touchpad_tab">Touchpad</string>
+<string name="keyboard_tab">Keyboard</string>
+<string name="keyboard_help">Use your Android keyboard in English/US mode. This is an append-only HID input proof of concept. Modifiers and special keys below are optional. Release all keys resets local input.</string>
+<string name="release_keys">Release all keys</string>
+<string name="ime_hint">Type with your Android keyboard (US HID only)</string>
+<string name="ime_disconnected">Not connected: typing is local and is not sent.</string>
+<string name="ime_clipboard_limit">Local clipboard/selection edits are not synchronized. Use Ctrl+C/V on the computer.</string>
 </resources>

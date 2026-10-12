@@ -12,8 +12,8 @@ class TouchpadMotion {
     data class Delta(val x: Int, val y: Int, val wheel: Int) {
         val empty get() = x == 0 && y == 0 && wheel == 0
     }
-    var sensitivity = 1f
-        set(value) { require(value.isFinite() && value in 0.5f..3f); field = value }
+    var sensitivity = PointerSensitivity.DEFAULT
+        set(value) { require(value.isFinite() && value in PointerSensitivity.MIN..PointerSensitivity.MAX); field = value }
     private var previous = emptyList<Finger>()
     private var edgeScroll = false
     private var x = 0f

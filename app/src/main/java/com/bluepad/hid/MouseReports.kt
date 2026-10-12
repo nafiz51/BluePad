@@ -1,6 +1,6 @@
 package com.bluepad.hid
 
-/** Four-byte relative mouse with vertical wheel. No report ID or keyboard. */
+/** V4 mouse payload/standalone descriptor. CompositeReports adds ID 2 for V5A registration. */
 object MouseReports {
     val descriptor = intArrayOf(
         0x05,0x01,0x09,0x02,0xA1,0x01,0x09,0x01,0xA1,0x00,
@@ -13,7 +13,7 @@ object MouseReports {
     fun encode(buttons: Int, dx: Int = 0, dy: Int = 0, wheel: Int = 0) = byteArrayOf(
         (buttons and 7).toByte(), dx.coerceIn(-127,127).toByte(), dy.coerceIn(-127,127).toByte(), wheel.coerceIn(-127,127).toByte()
     )
-    /** Bluetooth Classic boot mouse has a fixed ID 2; report mode is unnumbered. */
+    /** Legacy standalone routing; the composite transport uses CompositeReports.MOUSE_ID. */
     fun reportId(boot: Boolean) = if (boot) 2 else 0
     /** Boot mouse protocol has buttons/X/Y only; the wheel requires report protocol. */
     fun forProtocol(report: ByteArray, boot: Boolean): ByteArray {

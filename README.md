@@ -1,6 +1,6 @@
 # BluePad — Android Bluetooth mouse
 
-Native offline Android Bluetooth Classic HID mouse prototype. Android 9/API 28 minimum; compile/target API 36. No Internet permission, runtime libraries, root, or PC companion software. Single-finger pointer movement, adjustable sensitivity, two-finger vertical scrolling, a locked one-finger right-edge scroll strip and left click are supported. V4 adds main-area tap-to-left-click, two-finger tap-to-right-click and double-tap-and-drag (final hardware tests passed on Vivo/Ubuntu). Keyboard, horizontal scrolling, other gestures and background operation remain outside the current scope.
+Native offline Android Bluetooth Classic HID mouse prototype. Android 9/API 28 minimum; compile/target API 36. No Internet permission, runtime libraries, root, or PC companion software. Single-finger pointer movement, adjustable sensitivity, two-finger vertical scrolling, a locked one-finger right-edge scroll strip and left click are supported. V4 adds main-area tap-to-left-click, two-finger tap-to-right-click and double-tap-and-drag (final hardware tests passed on Vivo/Ubuntu). V5A adds composite mouse/keyboard HID support and native default-Android-IME input with US HID mapping, hardware-verified by the user on Vivo/Ubuntu. Universal Unicode support, horizontal scrolling, other gestures and background operation remain outside the current scope.
 
 ## Build
 
@@ -20,7 +20,7 @@ The wrapper resolves Gradle 8.13; pinned AGP 8.13.2 and Kotlin 2.2.21 resolve on
 - `hid/MouseReports`: relative mouse descriptor and pure four-byte report/button/wheel encoding with three-byte boot-mode adaptation; JUnit tests.
 - `ui/TouchpadView`: density-independent pointer/scroll input with frame batching and fractional accumulation; `TouchpadMotion` holds testable gesture math. `ui/LeftClickButton`: held touch and complete accessibility clicks.
 
-HID uses three button bits (only left is used), five padding bits, signed relative X/Y/wheel in [-127,127], and no report ID. Report protocol uses four bytes; boot protocol uses three-byte buttons/X/Y with the Bluetooth boot mouse ID 2 and disables scrolling. No keyboard fields. Registration success is confirmed by callback and does not imply connection. The Android API permits one registered HID app and unregisters apps that leave the foreground. BluePad releases buttons, disconnects, unregisters and closes the profile on activity stop. Returning requires registration and reconnecting. Rotation also ends the current session.
+HID uses three button bits (only left is used), five padding bits, signed relative X/Y/wheel in [-127,127], and composite mouse report ID 2. Report protocol uses four bytes; boot protocol uses three-byte buttons/X/Y with the Bluetooth boot mouse ID 2 and disables scrolling. The composite keyboard uses report ID 1 and an eight-byte input payload. Registration success is confirmed by callback and does not imply connection. The Android API permits one registered HID app and unregisters apps that leave the foreground. BluePad releases buttons, disconnects, unregisters and closes the profile on activity stop. Returning requires registration and reconnecting. Rotation also ends the current session.
 
 ## Physical-device verification
 
@@ -48,3 +48,7 @@ The user has confirmed Bluetooth connection, cursor movement, adjustable sensiti
 The user confirmed V3 right-edge one-finger scrolling, normal cursor movement, two-finger scrolling and existing touchpad features on Vivo/Ubuntu, with no additional issues observed; see [scroll strip notes](docs/SCROLL_STRIP.md).
 
 V4 implementation and validation notes: [advanced gestures](docs/V4_GESTURES.md). Final V4 hardware testing passed on Vivo/Ubuntu, including the [scrolling refinement](docs/V4_SCROLL_OPTIMIZATION.md). Scrolling remains less smooth than a laptop precision touchpad; this is an accepted V4 limitation.
+
+V5A is hardware-verified by the user and recorded by the local annotated tag `bluetooth-mouse-keyboard-working-v5a`; see [keyboard foundation](docs/V5A_KEYBOARD_FOUNDATION.md) and [connection audit](docs/V5A_CONNECTION_AUDIT.md). The audit preserves earlier failure evidence without claiming a proven host-side root cause.
+
+Pointer sensitivity now ranges from 0.5× to 8× in 0.1× steps (default 1×), preserving existing saved values; scrolling speed is independent. The current V5A version has been hardware-verified by the user.
