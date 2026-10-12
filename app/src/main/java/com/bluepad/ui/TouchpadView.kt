@@ -1,6 +1,8 @@
 package com.bluepad.ui
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.util.Log
 import android.view.MotionEvent
 import android.widget.TextView
@@ -13,6 +15,8 @@ class TouchpadView @JvmOverloads constructor(
 ) : TextView(context) {
     private companion object { const val TAG = "BluePadTouch" }
     private val motion = TouchpadMotion()
+    private val stripPaint = Paint().apply { color = 0x101565c0 }
+    private val separatorPaint = Paint().apply { color = 0x60909090; strokeWidth = resources.displayMetrics.density }
     var sensitivity: Float
         get() = motion.sensitivity
         set(value) { motion.sensitivity = value }
@@ -26,6 +30,12 @@ class TouchpadView @JvmOverloads constructor(
         gravity = android.view.Gravity.CENTER
         setBackgroundColor(0xffdddddd.toInt())
         contentDescription = context.getString(R.string.touchpad)
+    }
+    override fun onDraw(canvas: Canvas) {
+        val boundary = TouchpadMotion.scrollZoneStart(width.toFloat())
+        canvas.drawRect(boundary, 0f, width.toFloat(), height.toFloat(), stripPaint)
+        canvas.drawLine(boundary, 0f, boundary, height.toFloat(), separatorPaint)
+        super.onDraw(canvas)
     }
     private fun trace(message: String) { if (Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG, message) }
     private fun scheduleFrame() {
@@ -66,7 +76,7 @@ class TouchpadView @JvmOverloads constructor(
                             (history?.let { event.getHistoricalX(index, it) } ?: event.getX(index)) / density,
                             (history?.let { event.getHistoricalY(index, it) } ?: event.getY(index)) / density)
                     }
-                    motion.sample(fingers)
+                    motion.sample(fingers, width / density)
                 }
                 if (event.actionMasked == MotionEvent.ACTION_MOVE) {
                     repeat(event.historySize) { sample(it) }

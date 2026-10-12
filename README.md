@@ -1,6 +1,6 @@
 # BluePad — Android Bluetooth mouse
 
-Native offline Android Bluetooth Classic HID mouse prototype. Android 9/API 28 minimum; compile/target API 36. No Internet permission, runtime libraries, root, or PC companion software. Single-finger pointer movement, adjustable sensitivity, two-finger vertical scrolling and left click are supported. Keyboard, horizontal scrolling, advanced gestures and background operation remain outside the current scope.
+Native offline Android Bluetooth Classic HID mouse prototype. Android 9/API 28 minimum; compile/target API 36. No Internet permission, runtime libraries, root, or PC companion software. Single-finger pointer movement, adjustable sensitivity, two-finger vertical scrolling, a locked one-finger right-edge scroll strip and left click are supported. Keyboard, horizontal scrolling, advanced gestures and background operation remain outside the current scope.
 
 ## Build
 
@@ -44,3 +44,5 @@ Bluetooth send success means the request was accepted, not proof that the host r
 - [AGP 8.13 compatibility](https://developer.android.com/build/releases/agp-8-13-0-release-notes)
 
 The user has confirmed Bluetooth connection, cursor movement, adjustable sensitivity, left click and two-finger scrolling on a real Vivo phone with Ubuntu. Scrolling required refreshing Bluetooth pairing and HID service recognition; see [touchpad update notes](docs/TOUCHPAD_UPDATE.md) for protocol changes, verification and recovery. Further features require approval.
+
+The user confirmed V3 right-edge one-finger scrolling, normal cursor movement, two-finger scrolling and existing touchpad features on Vivo/Ubuntu, with no additional issues observed; see [scroll strip notes](docs/SCROLL_STRIP.md).
