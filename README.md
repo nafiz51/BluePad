@@ -1,6 +1,6 @@
-# BluePad — Milestone 1
+# BluePad — Android Bluetooth mouse
 
-Native offline Android Bluetooth Classic HID mouse prototype. Android 9/API 28 minimum; compile/target API 36. No Internet permission, runtime libraries, root, or PC companion software. Keyboard, scrolling, gestures and background operation are outside this milestone.
+Native offline Android Bluetooth Classic HID mouse prototype. Android 9/API 28 minimum; compile/target API 36. No Internet permission, runtime libraries, root, or PC companion software. Single-finger pointer movement, adjustable sensitivity, two-finger vertical scrolling and left click are supported. Keyboard, horizontal scrolling, advanced gestures and background operation remain outside the current scope.
 
 ## Build
 
@@ -17,14 +17,14 @@ The wrapper resolves Gradle 8.13; pinned AGP 8.13.2 and Kotlin 2.2.21 resolve on
 - `MainActivity`: native UI, activity visibility, Bluetooth state/bond broadcasts and permission result handling.
 - `bluetooth/BluetoothPermissions`: Android 12+ Nearby devices (`BLUETOOTH_CONNECT`); legacy Bluetooth permissions end at API 30. No scanning, discoverability request or location permission.
 - `bluetooth/HidManager`: serial worker, HID profile/registration callbacks, paired devices, one host, explicit connection/disconnection, 12-second failure timeouts, cleanup and stale-session guards.
-- `hid/MouseReports`: relative mouse descriptor and pure three-byte report/button encoding; JUnit tests.
-- `ui/TouchpadView`: single-pointer relative motion, density normalization and subpixel accumulation. `ui/LeftClickButton`: held touch and complete accessibility clicks.
+- `hid/MouseReports`: relative mouse descriptor and pure four-byte report/button/wheel encoding with three-byte boot-mode adaptation; JUnit tests.
+- `ui/TouchpadView`: density-independent pointer/scroll input with frame batching and fractional accumulation; `TouchpadMotion` holds testable gesture math. `ui/LeftClickButton`: held touch and complete accessibility clicks.
 
-HID uses three button bits (only left is used), five padding bits, signed relative X/Y in [-127,127], and no report ID. Report and boot mouse protocols use the same three-byte format. No wheel or keyboard fields. Registration success is confirmed by callback and does not imply connection. The Android API permits one registered HID app and unregisters apps that leave the foreground. BluePad releases buttons, disconnects, unregisters and closes the profile on activity stop. Returning requires registration and reconnecting. Rotation also ends the current session.
+HID uses three button bits (only left is used), five padding bits, signed relative X/Y/wheel in [-127,127], and no report ID. Report protocol uses four bytes; boot protocol uses three-byte buttons/X/Y with the Bluetooth boot mouse ID 2 and disables scrolling. No keyboard fields. Registration success is confirmed by callback and does not imply connection. The Android API permits one registered HID app and unregisters apps that leave the foreground. BluePad releases buttons, disconnects, unregisters and closes the profile on activity stop. Returning requires registration and reconnecting. Rotation also ends the current session.
 
-## Physical-device verification — UNVERIFIED
+## Physical-device verification
 
-No phone/computer compatibility claim is verified by a build or unit test. HID Device exposure, Bluetooth firmware, host behavior and policy can prevent registration or connection; rejection or timeout is shown in the UI. A timeout cannot distinguish every unsupported implementation from a temporarily unavailable service.
+The user reports successful connection, cursor movement, sensitivity, left click and scrolling on Vivo/Ubuntu after refreshing Bluetooth pairing/service recognition. Other combinations remain unverified; a build or unit test does not prove hardware compatibility. HID Device exposure, Bluetooth firmware, host behavior and policy can prevent registration or connection; rejection or timeout is shown in the UI. A timeout cannot distinguish every unsupported implementation from a temporarily unavailable service.
 
 1. Install the debug APK on a real Android 9+ phone. Test an Android 12+ device as well for runtime permission behavior.
 2. Enable Bluetooth on phone and computer. Pair using Android/computer Bluetooth settings and confirm the same pairing code. Keep BluePad visible during HID use. If pairing happened before HID registration, a host may require removing the bond and pairing again while BluePad is registered; switching to Settings stops the foreground session, so return and refresh/reconnect afterward.
@@ -43,4 +43,4 @@ Bluetooth send success means the request was accepted, not proof that the host r
 - [Android Bluetooth permissions](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions)
 - [AGP 8.13 compatibility](https://developer.android.com/build/releases/agp-8-13-0-release-notes)
 
-Stop at Milestone 1. Next work: execute and record the hardware matrix, fix observed interoperability issues within this scope, then seek approval for a later milestone.
+The user has confirmed Bluetooth connection, cursor movement, adjustable sensitivity, left click and two-finger scrolling on a real Vivo phone with Ubuntu. Scrolling required refreshing Bluetooth pairing and HID service recognition; see [touchpad update notes](docs/TOUCHPAD_UPDATE.md) for protocol changes, verification and recovery. Further features require approval.

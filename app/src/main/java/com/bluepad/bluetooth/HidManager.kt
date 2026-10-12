@@ -28,6 +28,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
     private var profile: BluetoothHidDevice? = null
     private var host: BluetoothDevice? = null
     private var disconnecting = false
+    private var bootProtocol = false
     private val buttons = MouseButtons()
     private var timeout: Runnable? = null
     private var reportSequence = 0L
@@ -60,7 +61,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
                         cancelTimeout()
                         profile = proxy as BluetoothHidDevice
                         state = state.copy(hid = "Registering")
-                        if (Log.isLoggable(TAG, Log.DEBUG)) trace("register descriptor=${MouseReports.descriptor.joinToString(" ") { "%02x".format(it.toInt() and 255) }} reportId=0 reportBytes=3")
+                        if (Log.isLoggable(TAG, Log.DEBUG)) trace("register descriptor=${MouseReports.descriptor.joinToString(" ") { "%02x".format(it.toInt() and 255) }} reportId=0 reportBytes=4")
                         val accepted = profile!!.registerApp(BluetoothHidDeviceAppSdpSettings("BluePad", "Relative mouse", "BluePad",
                             BluetoothHidDevice.SUBCLASS1_MOUSE, MouseReports.descriptor), null, null, java.util.concurrent.Executor { task -> work { task.run() } }, callback(session))
                         trace("registerApp accepted=$accepted; waiting for registration callback")
@@ -96,26 +97,28 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
                 BluetoothProfile.STATE_CONNECTED -> { if (disconnecting || !state.registered) { profile?.disconnect(device); return }; cancelTimeout(); host = device; buttons.release(); state = state.copy(connected = true, busy = false, connection = "Connected"); send(MouseReports.encode(false)) }
                 BluetoothProfile.STATE_CONNECTING -> { host = device; state = state.copy(busy = true, connection = "Connecting") }
                 BluetoothProfile.STATE_DISCONNECTING -> state = state.copy(connected = false, busy = true, connection = "Disconnecting")
-                BluetoothProfile.STATE_DISCONNECTED -> { cancelTimeout(); host = null; disconnecting = false; buttons.release(); state = state.copy(connected = false, busy = false, connection = "Disconnected") }
+                BluetoothProfile.STATE_DISCONNECTED -> { cancelTimeout(); host = null; disconnecting = false; bootProtocol = false; buttons.release(); state = state.copy(connected = false, busy = false, connection = "Disconnected") }
             }
             publish()
         }
         override fun onGetReport(device: BluetoothDevice, type: Byte, id: Byte, bufferSize: Int) {
             trace("getReport callbackSession=$session type=$type id=$id bufferSize=$bufferSize")
             if (session != generation || !active) return
-            if (type == BluetoothHidDevice.REPORT_TYPE_INPUT && id.toInt() == 0 && (bufferSize == 0 || bufferSize >= 3))
-                trace("replyReport accepted=${profile?.replyReport(device, type, id, buttons.move(0,0))}")
+            if (type == BluetoothHidDevice.REPORT_TYPE_INPUT && id.toInt() == MouseReports.reportId(bootProtocol) && (bufferSize == 0 || bufferSize >= (if (bootProtocol) 3 else 4)))
+                trace("replyReport accepted=${profile?.replyReport(device, type, id, MouseReports.forProtocol(buttons.move(0,0), bootProtocol))}")
             else profile?.reportError(device, BluetoothHidDevice.ERROR_RSP_UNSUPPORTED_REQ)
         }
         override fun onSetProtocol(device: BluetoothDevice, protocol: Byte) {
-            trace("protocol callbackSession=$session currentSession=$generation protocol=$protocol (boot=0 report=1); both use the same three-byte mouse payload")
+            if (session != generation || !active) return
+            bootProtocol = protocol == BluetoothHidDevice.PROTOCOL_BOOT_MODE
+            trace("protocol=$protocol boot=$bootProtocol; wheel available only in report mode")
         }
         override fun onSetReport(device: BluetoothDevice, type: Byte, id: Byte, data: ByteArray) {
             if (session == generation && active) profile?.reportError(device, BluetoothHidDevice.ERROR_RSP_UNSUPPORTED_REQ)
         }
         override fun onVirtualCableUnplug(device: BluetoothDevice) {
             trace("virtual cable unplug callbackSession=$session currentSession=$generation")
-            if (session == generation && active) { host = null; buttons.release(); state = state.copy(connected = false, busy = false, connection = "Unplugged"); publish() }
+            if (session == generation && active) { host = null; bootProtocol = false; buttons.release(); state = state.copy(connected = false, busy = false, connection = "Unplugged"); publish() }
         }
     }
     fun connect(device: BluetoothDevice) = work {
@@ -133,20 +136,25 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
             if (state.connected) send(buttons.move(dx, dy)) else trace("move dropped: disconnected")
         }
     }
+    fun scroll(wheel: Int) = work {
+        if (state.connected && !bootProtocol) send(buttons.scroll(wheel))
+        else trace("scroll dropped connected=${state.connected} boot=$bootProtocol")
+    }
     fun press() = work { trace("press connected=${state.connected}"); if (state.connected) send(buttons.press()) }
     fun release() = work { trace("release connected=${state.connected}"); releaseInternal() }
     private fun releaseInternal() { val report = buttons.release(); if (state.connected) send(report) }
     private fun send(report: ByteArray) {
+        val payload = MouseReports.forProtocol(report, bootProtocol)
         val sequence = ++reportSequence
         val device = host ?: run { trace("send sequence=$sequence dropped: no host connected=${state.connected}"); return }
-        if (Log.isLoggable(TAG, Log.DEBUG)) trace("send sequence=$sequence id=0 length=${report.size} bytes=${report.joinToString(" ") { "%02x".format(it.toInt() and 255) }} profile=${profile != null}")
-        val accepted = profile?.sendReport(device, 0, report)
+        if (Log.isLoggable(TAG, Log.DEBUG)) trace("send sequence=$sequence id=${MouseReports.reportId(bootProtocol)} length=${payload.size} bytes=${payload.joinToString(" ") { "%02x".format(it.toInt() and 255) }} profile=${profile != null}")
+        val accepted = profile?.sendReport(device, MouseReports.reportId(bootProtocol), payload)
         trace("send sequence=$sequence accepted=$accepted (request acceptance, not host delivery)")
         if (accepted != true) {
             Log.w(TAG, "send sequence=$sequence rejected; neutral release and disconnect")
             buttons.release()
             // Best effort neutral report, then disconnect so a failed press/release cannot linger.
-            trace("recovery neutral accepted=${profile?.sendReport(device, 0, MouseReports.encode(false))}")
+            trace("recovery neutral accepted=${profile?.sendReport(device, MouseReports.reportId(bootProtocol), MouseReports.forProtocol(MouseReports.encode(false), bootProtocol))}")
             disconnecting = true
             trace("recovery disconnect accepted=${profile?.disconnect(device)}")
             state = state.copy(connected = false, busy = true, connection = "Disconnecting", error = "Mouse report rejected; reconnect.")
@@ -169,12 +177,13 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         state = state.copy(registered = false, connected = false, busy = false, connection = "Disconnected")
         if (old != null) {
             if (device != null) {
-                safely { old.sendReport(device, 0, MouseReports.encode(false)) }
+                safely { old.sendReport(device, MouseReports.reportId(bootProtocol), MouseReports.forProtocol(MouseReports.encode(false), bootProtocol)) }
                 safely { old.disconnect(device) }
             }
             safely { old.unregisterApp() }
             safely { adapter?.closeProfileProxy(BluetoothProfile.HID_DEVICE, old) }
         }
+        bootProtocol = false
     }
     private fun safely(block: () -> Unit) { try { block() } catch (e: RuntimeException) { Log.w(TAG, "Cleanup operation failed; continuing", e) } }
     fun destroy() { synchronized(worker) { stop(); worker.shutdown() } }

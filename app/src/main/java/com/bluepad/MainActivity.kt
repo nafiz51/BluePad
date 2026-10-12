@@ -52,7 +52,30 @@ class MainActivity : Activity() {
         devices = Spinner(this); root.addView(devices)
         connect = button("Connect") { paired.getOrNull(devices.selectedItemPosition)?.let { hid.connect(it) } }
         disconnect = button("Disconnect") { hid.disconnect() }
-        pad = TouchpadView(this) { dx,dy -> hid.move(dx,dy) }; root.addView(pad, LinearLayout.LayoutParams(-1,0,1f))
+        pad = TouchpadView(this, { dx,dy -> hid.move(dx,dy) }, { wheel -> hid.scroll(wheel) })
+        val preferences = getSharedPreferences("touchpad", MODE_PRIVATE)
+        val initialSensitivity = preferences.getFloat("sensitivity", 1f).coerceIn(0.5f,3f)
+        pad.sensitivity = initialSensitivity
+        val sensitivityLabel = TextView(this)
+        fun showSensitivity(value: Float) { sensitivityLabel.text = getString(R.string.sensitivity, value) }
+        showSensitivity(initialSensitivity)
+        root.addView(sensitivityLabel)
+        root.addView(SeekBar(this).apply {
+            max = 25
+            progress = ((initialSensitivity - 0.5f) * 10).toInt()
+            contentDescription = getString(R.string.pointer_sensitivity)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
+                    pad.sensitivity = 0.5f + progress / 10f
+                    showSensitivity(pad.sensitivity)
+                }
+                override fun onStartTrackingTouch(bar: SeekBar) {}
+                override fun onStopTrackingTouch(bar: SeekBar) {
+                    preferences.edit().putFloat("sensitivity", pad.sensitivity).apply()
+                }
+            })
+        })
+        root.addView(pad, LinearLayout.LayoutParams(-1,0,1f))
         click = LeftClickButton(this, { hid.press() }, { hid.release() }).apply { setText(R.string.left_click) }
         root.addView(click)
         setContentView(root)
@@ -68,7 +91,7 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED) else registerReceiver(receiver, filter)
         hid.start()
     }
-    override fun onStop() { trace("onStop"); visible = false; hid.stop(); unregisterReceiver(receiver); super.onStop() }
+    override fun onStop() { trace("onStop"); getSharedPreferences("touchpad", MODE_PRIVATE).edit().putFloat("sensitivity", pad.sensitivity).apply(); visible = false; hid.stop(); unregisterReceiver(receiver); super.onStop() }
     override fun onDestroy() { hid.destroy(); super.onDestroy() }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode,permissions,grantResults)
