@@ -30,6 +30,8 @@ class MainActivity : Activity() {
     private lateinit var devices: Spinner
     private lateinit var connect: Button
     private lateinit var disconnect: Button
+    private lateinit var reconnectLast: Button
+    private var renderedInputToken = -1L
     private lateinit var click: Button
     private lateinit var rightClick: Button
     private var physicalButtons = 0
@@ -44,7 +46,14 @@ class MainActivity : Activity() {
     private var visible = false
     private fun trace(message: String) { if (Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG, message) }
     private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) { trace("broadcast action=${intent.action} visible=$visible; restarting HID"); hid.stop(); if (visible) hid.start() }
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == BluetoothAdapter.ACTION_STATE_CHANGED) {
+                when (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE,BluetoothAdapter.ERROR)) {
+                    BluetoothAdapter.STATE_ON -> if (visible) hid.start()
+                    BluetoothAdapter.STATE_OFF, BluetoothAdapter.STATE_TURNING_OFF -> hid.stop()
+                }
+            } else if (visible) hid.refreshBondedDevices()
+        }
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -126,8 +135,14 @@ class MainActivity : Activity() {
         devices = Spinner(this); connectionPanel.addView(devices)
         connect = button("Connect") { paired.getOrNull(devices.selectedItemPosition)?.let { hid.connect(it) } }
         disconnect = button("Disconnect") { hid.disconnect() }
+        reconnectLast = button(getString(R.string.reconnect_last)) { hid.reconnectLast() }
         pad = TouchpadView(this, { dx,dy -> hid.move(dx,dy) }, { wheel -> hid.scroll(wheel) }, { mask, down -> hid.gestureButton(mask,down) }, { steps -> hid.zoom(hostOs,steps) })
         val preferences = getSharedPreferences("touchpad", MODE_PRIVATE)
+        settings.addView(Switch(this).apply {
+            setText(R.string.automatic_reconnect)
+            isChecked = getSharedPreferences("connection",MODE_PRIVATE).getBoolean("automatic",true)
+            setOnCheckedChangeListener { _,enabled -> hid.setAutomaticReconnect(enabled) }
+        })
         hostOs = HostOs.restore(preferences.getString("host_os",null))
         settings.addView(TextView(this).apply { setText(R.string.host_os) })
         settings.addView(Spinner(this).apply {
@@ -232,20 +247,28 @@ class MainActivity : Activity() {
     }
     @SuppressLint("MissingPermission", "SetTextI18n")
     private fun render(state: HidManager.State) {
+        if (renderedInputToken != state.inputToken) {
+            pad.isEnabled = false; click.isEnabled = false; rightClick.isEnabled = false
+            keyboardView.render(false,0); keyboardView.resetInput()
+            renderedInputToken = state.inputToken
+        }
+        hid.acknowledgeInputs(state.inputToken)
         lastState = state
         updateBackHandler()
         toolbarStatus.text = "Bluetooth · ${state.connection}"
         toolbarStatus.contentDescription = "Bluetooth connection: ${state.connection}. Select device and connect."
         status.text = "Bluetooth: ${state.bluetooth}\nHID: ${state.hid}\nHost: ${state.connection}\n${state.error}"
         if (paired != state.devices) {
-            val previous = paired.getOrNull(devices.selectedItemPosition)?.address
+            val previous = paired.getOrNull(devices.selectedItemPosition)?.address ?: getSharedPreferences("connection",MODE_PRIVATE).getString("last_host",null)
             paired = state.devices
             devices.adapter = ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,state.deviceNames)
             val index = paired.indexOfFirst { it.address == previous }; if (index >= 0) devices.setSelection(index)
         }
+        state.hostAddress?.let { address -> val index = paired.indexOfFirst { it.address == address }; if (index >= 0) devices.setSelection(index) }
         connect.isEnabled = visible && state.registered && !state.connected && !state.busy && paired.isNotEmpty()
         devices.isEnabled = !state.connected && !state.busy
-        disconnect.isEnabled = visible && (state.connected || state.busy)
+        disconnect.isEnabled = visible && (state.connected || state.busy || state.connection == "Reconnecting")
+        reconnectLast.isEnabled = visible && state.bluetooth == "Enabled" && state.lastHostAvailable && !state.connected && !state.busy
         pad.isEnabled = visible && state.connected
         click.isEnabled = visible && state.connected
         rightClick.isEnabled = visible && state.connected

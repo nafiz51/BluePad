@@ -11,4 +11,6 @@
 <string name="ime_hint">Type with your Android keyboard (US HID only)</string>
 <string name="ime_disconnected">Not connected: typing is local and is not sent.</string>
 <string name="ime_clipboard_limit">Local clipboard/selection edits are not synchronized. Use Ctrl+C/V on the computer.</string>
+<string name="automatic_reconnect">Automatic reconnection</string>
+<string name="reconnect_last">Reconnect last host</string>
 </resources>

@@ -2,6 +2,12 @@ package com.bluepad.bluetooth
 import org.junit.Assert.*
 import org.junit.Test
 class HidDeadlineTest {
+    @Test fun oldTimeoutRevisionCannotMatchANewerAttemptOfTheSameOperation() {
+        val d = HidDeadline(); d.begin(HidDeadline.Operation.CONNECTION); val old = d.revision
+        d.cancel(); d.begin(HidDeadline.Operation.CONNECTION)
+        assertEquals(HidDeadline.Operation.CONNECTION,d.operation)
+        assertNotEquals(old,d.revision)
+    }
     @Test fun registrationCallbackCannotCancelConnectingDeadline() {
         val d = HidDeadline(); d.begin(HidDeadline.Operation.CONNECTION)
         assertFalse(d.cancel(HidDeadline.Operation.REGISTRATION))

@@ -21,6 +21,7 @@ class KeyboardView @JvmOverloads constructor(context: Context,
     private val controls = mutableListOf<android.view.View>()
     private val modifiers = linkedMapOf<Int,ToggleButton>()
     private var rendering = false
+    private var inputVersion = 0
     private val feedback = TextView(context)
     private val bridge = ImeTextBridge({ stroke ->
         if (Log.isLoggable(TAG,Log.DEBUG)) Log.d(TAG,"IME generated a key tap")
@@ -32,25 +33,31 @@ class KeyboardView @JvmOverloads constructor(context: Context,
     private val field = object : EditText(context) {
         override fun onCreateInputConnection(info: EditorInfo): InputConnection? {
             val base = super.onCreateInputConnection(info) ?: return null
+            val version = inputVersion
             return object : InputConnectionWrapper(base,false) {
                 override fun setComposingText(text: CharSequence?, position: Int): Boolean {
+                    if (version != inputVersion) return false
                     if (Log.isLoggable(TAG,Log.DEBUG)) Log.d(TAG,"IME composing length=${text?.length ?: 0}; local only")
                     bridge.compose(text?.toString() ?: "")
                     return super.setComposingText(text,position)
                 }
                 override fun setComposingRegion(start: Int, end: Int): Boolean {
+                    if (version != inputVersion) return false
                     if (start != end && !bridge.composing) { bridge.rejectReplacement(); return false }
                     return super.setComposingRegion(start,end)
                 }
                 override fun commitText(text: CharSequence?, position: Int): Boolean {
+                    if (version != inputVersion) return false
                     if (Log.isLoggable(TAG,Log.DEBUG)) Log.d(TAG,"IME commit received length=${text?.length ?: 0}")
                     bridge.commit(text?.toString() ?: "")
                     return super.commitText(text,position)
                 }
                 override fun finishComposingText(): Boolean {
+                    if (version != inputVersion) return false
                     bridge.finish(); return super.finishComposingText()
                 }
                 override fun deleteSurroundingText(before: Int, after: Int): Boolean {
+                    if (version != inputVersion) return false
                     val composing = bridge.composing
                     if (!composing) bridge.delete(before,after)
                     val result = super.deleteSurroundingText(before,after)
@@ -62,6 +69,7 @@ class KeyboardView @JvmOverloads constructor(context: Context,
                     return result
                 }
                 override fun deleteSurroundingTextInCodePoints(before: Int, after: Int): Boolean {
+                    if (version != inputVersion) return false
                     val composing = bridge.composing
                     if (!composing) bridge.delete(before,after)
                     val result = super.deleteSurroundingTextInCodePoints(before,after)
@@ -69,9 +77,11 @@ class KeyboardView @JvmOverloads constructor(context: Context,
                     return result
                 }
                 override fun performEditorAction(action: Int): Boolean {
+                    if (version != inputVersion) return false
                     bridge.finish(); bridge.enter(); return true
                 }
                 override fun sendKeyEvent(event: KeyEvent): Boolean {
+                    if (version != inputVersion) return false
                     if (event.action == KeyEvent.ACTION_DOWN && remoteEvent(event)) return true
                     if (event.action == KeyEvent.ACTION_UP && (event.keyCode in handledKeys || event.unicodeChar > 0)) return true
                     return super.sendKeyEvent(event)
@@ -151,7 +161,7 @@ class KeyboardView @JvmOverloads constructor(context: Context,
             controls.add(button)
             modifierRow.addView(button,LinearLayout.LayoutParams(dp(64),dp(48)))
         }
-        val release = Button(context).apply { isFocusable = false; setText(R.string.release_keys); setOnClickListener { bridge.reset(); field.text.clear(); context.getSystemService(InputMethodManager::class.java).restartInput(field); clear() } }
+        val release = Button(context).apply { isFocusable = false; setText(R.string.release_keys); setOnClickListener { resetInput(); clear() } }
         controls.add(release); modifierRow.addView(release,LinearLayout.LayoutParams(dp(132),dp(48)))
     }
     fun openIme() {
@@ -163,7 +173,12 @@ class KeyboardView @JvmOverloads constructor(context: Context,
             }
         }
     }
+    fun resetInput() {
+        inputVersion++; bridge.reset(); field.text.clear()
+        context.getSystemService(InputMethodManager::class.java).restartInput(field)
+    }
     fun closeIme() {
+        inputVersion++
         bridge.enabled = false; bridge.reset()
         field.text.clear(); field.clearFocus()
         context.getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(field.windowToken,0)
