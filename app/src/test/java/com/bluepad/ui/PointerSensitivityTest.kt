@@ -4,8 +4,8 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PointerSensitivityTest {
-    @Test fun sliderSupportsEveryTenthFromHalfToEightWithDefaultOne() {
-        assertEquals(1f,TouchpadMotion().sensitivity,0f)
+    @Test fun sliderSupportsEveryTenthFromHalfToEightWithDefaultThreePointFive() {
+        assertEquals(3.5f,TouchpadMotion().sensitivity,0f)
         assertEquals(0.5f,PointerSensitivity.value(0),0f)
         assertEquals(8f,PointerSensitivity.value(75),0f)
         assertEquals(5,PointerSensitivity.progress(1f))
@@ -22,8 +22,8 @@ class PointerSensitivityTest {
             assertEquals(saved,PointerSensitivity.restore(saved),0f)
             assertEquals(step,PointerSensitivity.progress(saved))
         }
-        assertEquals(1f,PointerSensitivity.restore(Float.NaN),0f)
-        assertEquals(1f,PointerSensitivity.restore(Float.POSITIVE_INFINITY),0f)
+        assertEquals(3.5f,PointerSensitivity.restore(Float.NaN),0f)
+        assertEquals(3.5f,PointerSensitivity.restore(Float.POSITIVE_INFINITY),0f)
         assertEquals(0.5f,PointerSensitivity.restore(-1f),0f)
         assertEquals(8f,PointerSensitivity.restore(10f),0f)
     }

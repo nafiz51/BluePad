@@ -36,7 +36,7 @@ class TouchpadMotionTest {
         assertEquals(TouchpadMotion.Delta(0,0,-2),motion.drain())
     }
     @Test fun liftingOneFingerRebasesWithoutCursorJump() {
-        val motion = TouchpadMotion()
+        val motion = TouchpadMotion().apply { sensitivity = 1f }
         motion.sample(listOf(finger(0,0f),finger(1,100f)))
         motion.sample(listOf(finger(1,100f)))
         assertTrue(motion.drain().empty)
@@ -44,7 +44,7 @@ class TouchpadMotionTest {
         assertEquals(TouchpadMotion.Delta(3,0,0),motion.drain())
     }
     @Test fun thirdFingerAndCancellationCannotLeaveResidualMotion() {
-        val motion = TouchpadMotion()
+        val motion = TouchpadMotion().apply { sensitivity = 1f }
         motion.sample(listOf(finger(0,0f),finger(1,0f),finger(2,0f)))
         motion.sample(listOf(finger(0,100f),finger(1,100f),finger(2,100f)))
         assertTrue(motion.drain().empty)
@@ -59,7 +59,7 @@ class TouchpadMotionTest {
         TouchpadMotion().sensitivity = Float.NaN
     }
     @Test fun edgeSwipesScrollInBothDirectionsWithoutMovingCursor() {
-        val motion = TouchpadMotion()
+        val motion = TouchpadMotion().apply { sensitivity = 1f }
         motion.sample(listOf(finger(0,95f,50f)),100f)
         motion.sample(listOf(finger(0,99f,26f)),100f)
         assertEquals(TouchpadMotion.Delta(0,0,1),motion.drain())
@@ -72,7 +72,7 @@ class TouchpadMotionTest {
         for (width in listOf(100f,200f,400f)) {
             val boundary = width * 0.88f
             for (start in listOf(boundary - 0.01f,boundary,width - 0.01f)) {
-                val motion = TouchpadMotion()
+                val motion = TouchpadMotion().apply { sensitivity = 1f }
                 motion.sample(listOf(finger(0,start,50f)),width)
                 motion.sample(listOf(finger(0,start,26f)),width)
                 val expected = if (start >= boundary) TouchpadMotion.Delta(0,0,1) else TouchpadMotion.Delta(0,-24,0)
@@ -81,20 +81,20 @@ class TouchpadMotionTest {
         }
     }
     @Test fun edgeModeRemainsScrollingWhenCrossingIntoCursorArea() {
-        val motion = TouchpadMotion()
+        val motion = TouchpadMotion().apply { sensitivity = 1f }
         motion.sample(listOf(finger(0,95f,50f)),100f)
         motion.sample(listOf(finger(0,10f,26f)),100f)
         assertEquals(TouchpadMotion.Delta(0,0,1),motion.drain())
     }
     @Test fun cursorModeRemainsMovementWhenCrossingIntoEdge() {
-        val motion = TouchpadMotion()
+        val motion = TouchpadMotion().apply { sensitivity = 1f }
         motion.sample(listOf(finger(0,10f,50f)),100f)
         motion.sample(listOf(finger(0,95f,26f)),100f)
         assertEquals(TouchpadMotion.Delta(85,-24,0),motion.drain())
     }
     @Test fun twoFingerTransitionRetainsOriginalModeWhenFirstFingerLifts() {
         for (start in listOf(10f,95f)) {
-            val motion = TouchpadMotion()
+            val motion = TouchpadMotion().apply { sensitivity = 1f }
             motion.sample(listOf(finger(0,start)),100f)
             motion.sample(listOf(finger(0,start),finger(1,99f)),100f)
             assertTrue(motion.drain().empty)
@@ -116,7 +116,7 @@ class TouchpadMotionTest {
         }
     }
     @Test fun cancellationClearsWheelResidualAndGestureLock() {
-        val motion = TouchpadMotion()
+        val motion = TouchpadMotion().apply { sensitivity = 1f }
         motion.sample(listOf(finger(0,95f)),100f)
         motion.sample(listOf(finger(0,95f,-30f)),100f)
         motion.reset()
@@ -126,7 +126,7 @@ class TouchpadMotionTest {
         assertEquals(TouchpadMotion.Delta(85,24,0),motion.drain())
     }
     @Test fun liftingAllFingersLetsTheNextGestureChooseItsOwnMode() {
-        val motion = TouchpadMotion()
+        val motion = TouchpadMotion().apply { sensitivity = 1f }
         motion.sample(listOf(finger(0,95f)),100f)
         motion.sample(emptyList(),100f)
         motion.sample(listOf(finger(1,10f,100f)),100f)

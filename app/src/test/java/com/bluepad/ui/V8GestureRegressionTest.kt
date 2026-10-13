@@ -45,7 +45,7 @@ class V8GestureRegressionTest {
     }
     @Test fun cursorStartsOnFirstSlopCrossingWithoutWaitingForTapDeadline() {
         val g = TouchpadGestures(8f,100f,250,300,180) { fail("Cursor movement must not click") }
-        val m = TouchpadMotion()
+        val m = TouchpadMotion().apply { sensitivity = 1f }
         val start = listOf(f(0)); g.sample(0,start,300f); m.sample(start,300f)
         val moved = listOf(f(0,39f,102f)); g.sample(8,moved,300f)
         assertTrue(g.allowsMotion); assertNull(g.holdDeadline)

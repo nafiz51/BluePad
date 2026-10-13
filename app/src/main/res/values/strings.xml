@@ -10,7 +10,7 @@
 <string name="pointer_sensitivity">Pointer sensitivity</string>
 <string name="sensitivity">Pointer sensitivity: %1$.1f×</string>
 <string name="release_keys">Release all keys</string>
-<string name="ime_hint">Type with your Android keyboard (US HID only)</string>
+<string name="ime_hint">Type here with your Android keyboard</string>
 <string name="ime_disconnected">Not connected: typing is local and is not sent.</string>
 <string name="ime_clipboard_limit">Local clipboard/selection edits are not synchronized. Use Ctrl+C/V on the computer.</string>
 <string name="automatic_reconnect">Automatic reconnection</string>
@@ -19,4 +19,16 @@
 <string name="natural_scrolling">Natural scrolling (reverse wheel direction)</string>
 <string name="scroll_sensitivity">Scroll sensitivity: %1$.1f×</string>
 <string name="restore_scrolling">Restore scroll defaults</string>
+<string name="section_connection">Connection</string>
+<string name="section_touchpad">Touchpad</string>
+<string name="section_zoom">Zoom Compatibility</string>
+<string name="section_appearance">Appearance</string>
+<string name="theme_system">System theme</string>
+<string name="theme_light">Light</string>
+<string name="theme_dark">Dark</string>
+<string name="select_host">Select host</string>
+<string name="connection_controls">Bluetooth connection controls</string>
+<string name="ime_ready">Ready · US HID input. Swipe the key row for more controls.</string>
+<string name="switch_light">Switch to Light theme</string>
+<string name="switch_dark">Switch to Midnight Blue theme</string>
 </resources>

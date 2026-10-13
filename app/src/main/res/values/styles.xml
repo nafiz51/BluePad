@@ -1,0 +1,30 @@
+<resources>
+    <style name="BluePadLight" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#2563EB</item>
+        <item name="android:colorBackground">#F2F7FF</item>
+        <item name="android:colorBackgroundFloating">#EDF4FF</item>
+        <item name="android:textColorPrimary">#142C4B</item>
+        <item name="android:textColorSecondary">#4C6585</item>
+        <item name="android:colorControlNormal">#4C6585</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:statusBarColor">#F2F7FF</item>
+        <item name="android:navigationBarColor">#F2F7FF</item>
+        <item name="android:windowBackground">#F2F7FF</item>
+    </style>
+    <style name="BluePadDark" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#60A5FA</item>
+        <item name="android:colorBackground">#101B2B</item>
+        <item name="android:colorBackgroundFloating">#1B2A40</item>
+        <item name="android:textColorPrimary">#EAF2FF</item>
+        <item name="android:textColorSecondary">#98ACC7</item>
+        <item name="android:colorControlNormal">#98ACC7</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:statusBarColor">#101B2B</item>
+        <item name="android:navigationBarColor">#101B2B</item>
+        <item name="android:windowBackground">#101B2B</item>
+    </style>
+</resources>

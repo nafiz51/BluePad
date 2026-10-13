@@ -11,13 +11,17 @@ class ScrollSettingsView @JvmOverloads constructor(context: Context,
     init { orientation = VERTICAL; render(); changed(value) }
     private fun save(next: ScrollSettings) {
         if (next == value) return
+        val previous = value
         value = next
-        preferences.edit().apply { value.encode().forEach { (k,v) -> putString(k,v) } }.apply()
+        preferences.edit().apply {
+            if (previous.natural != next.natural) putString("natural",next.natural.toString())
+            if (previous.sensitivity != next.sensitivity) putString("scroll",next.sensitivity.toString())
+        }.apply()
         changed(value)
     }
     private fun render() {
         removeAllViews()
-        addView(TextView(context).apply { setText(R.string.scroll_controls) })
+        addView(TextView(context).apply { setText(R.string.scroll_controls); textSize = 14f; setTypeface(typeface,android.graphics.Typeface.BOLD); setPadding(0,(16*resources.displayMetrics.density).toInt(),0,(4*resources.displayMetrics.density).toInt()) })
         addView(Switch(context).apply {
             setText(R.string.natural_scrolling); isChecked = value.natural
             setOnCheckedChangeListener { _,checked -> save(value.copy(natural = checked)) }
@@ -36,6 +40,16 @@ class ScrollSettingsView @JvmOverloads constructor(context: Context,
                 override fun onStopTrackingTouch(bar: SeekBar) {}
             })
         })
-        addView(Button(context).apply { setText(R.string.restore_scrolling); setOnClickListener { save(ScrollSettings()); render() } })
+        addView(Button(context).apply { setText(R.string.restore_scrolling); setOnClickListener {
+            val defaults = ScrollSettings()
+            val differs = value != defaults
+            value = defaults
+            preferences.edit().remove("natural").remove("scroll").apply()
+            if (differs) changed(value)
+            render()
+        } })
+        val appearance = Appearance.restore(context.getSharedPreferences("appearance",Context.MODE_PRIVATE).getString("theme",null))
+        val systemDark = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        UiStyle(appearance.isDark(systemDark),resources.displayMetrics.density).applyTree(this)
     }
 }

@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import com.bluepad.diagnostics.Diagnostics
 import android.util.Log
 import com.bluepad.hid.CompositeReports
 import com.bluepad.hid.HidInputState
@@ -23,7 +24,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         val devices: List<BluetoothDevice> = emptyList(), val deviceNames: List<String> = emptyList(), val registered: Boolean = false,
         val connected: Boolean = false, val inputToken: Long = 0, val hostAddress: String? = null, val lastHostAvailable: Boolean = false, val modifiers: Int = 0, val busy: Boolean = false, val error: String = "")
     private val app = context.applicationContext
-    private val debugTrace = app.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
+    private val debugTrace = Diagnostics.enabled
     private val adapter = app.getSystemService(BluetoothManager::class.java)?.adapter
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -48,9 +49,9 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
     private var timeout: Runnable? = null
     private val deadline = HidDeadline()
     private var reportSequence = 0L
-    // Opt in for a short hardware trace: adb shell setprop log.tag.BluePadHid DEBUG
-    private fun trace(message: String) { if (debugTrace && Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG, "uptime=${SystemClock.uptimeMillis()} $message") }
-    private fun publish() { state = state.copy(modifiers = keyboard.modifiers,inputToken = inputSession.token,hostAddress = host?.address,lastHostAvailable = state.devices.any { it.address == preferences.getString("last_host",null) }); trace("state session=$generation active=$active registered=${state.registered} connected=${state.connected} busy=${state.busy} profile=${profile != null} host=${host != null} hid=${state.hid} connection=${state.connection}"); val snapshot = state; main.post { update(snapshot) } }
+    // Diagnostic builds also require an explicit per-tag DEBUG opt-in.
+    private inline fun trace(message: () -> String) = Diagnostics.debug(TAG,message)
+    private fun publish() { state = state.copy(modifiers = keyboard.modifiers,inputToken = inputSession.token,hostAddress = host?.address,lastHostAvailable = state.devices.any { it.address == preferences.getString("last_host",null) }); trace { "state session=$generation active=$active registered=${state.registered} connected=${state.connected} busy=${state.busy} profile=${profile != null} host=${host != null} hid=${state.hid} connection=${state.connection}" }; val snapshot = state; main.post { update(snapshot) } }
     private fun work(block: () -> Unit) { synchronized(worker) { if (worker.isShutdown) return; worker.execute {
         try { block() } catch (e: SecurityException) { Log.e(TAG, "Bluetooth permission failure; closing session", e); close(); state = State(bluetooth = "Permission required", error = "Grant Nearby devices permission."); publish() }
         catch (e: RuntimeException) { Log.e(TAG, "Bluetooth operation failure; closing session", e); close(); state = state.copy(hid = "Failed", error = e.message ?: "Bluetooth operation failed"); publish() }
@@ -60,7 +61,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         foreground = true; startInternal()
     }
     private fun startInternal() {
-        trace("start active=$active")
+        trace { "start active=$active" }
         if (active) return
         active = true
         if (!BluetoothPermissions.granted(app)) { state = State(bluetooth = "Permission required"); active = false; publish(); return }
@@ -76,15 +77,15 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
                 synchronized(worker) {
                     if (worker.isShutdown) { safely { adapter.closeProfileProxy(type, proxy) }; return }
                     work {
-                        trace("profile acquired callbackSession=$session currentSession=$generation active=$active")
+                        trace { "profile acquired callbackSession=$session currentSession=$generation active=$active" }
                         if (!active || session != generation) { adapter.closeProfileProxy(type, proxy); return@work }
                         cancelTimeout()
                         profile = proxy as BluetoothHidDevice
                         state = state.copy(hid = "Registering")
-                        if (Log.isLoggable(TAG, Log.DEBUG)) trace("register descriptor=${CompositeReports.descriptor.joinToString(" ") { "%02x".format(it.toInt() and 255) }} mouseId=2 mouseBytes=4 keyboardId=1 keyboardBytes=8")
+                        if (Diagnostics.isEnabled(TAG)) trace { "register descriptor=${CompositeReports.descriptor.joinToString(" ") { "%02x".format(it.toInt() and 255) }} mouseId=2 mouseBytes=4 keyboardId=1 keyboardBytes=8" }
                         val accepted = profile!!.registerApp(BluetoothHidDeviceAppSdpSettings("BluePad", "Mouse and US keyboard", "BluePad",
                             BluetoothHidDevice.SUBCLASS1_COMBO, CompositeReports.descriptor), null, null, java.util.concurrent.Executor { task -> work { task.run() } }, callback(session))
-                        trace("registerApp accepted=$accepted; waiting for registration callback")
+                        trace { "registerApp accepted=$accepted; waiting for registration callback" }
                         if (!accepted) { close(); state = state.copy(hid = "Registration rejected", error = "Another HID app or device policy may prevent registration."); reconnect.failed(); scheduleRetry() }
                         else armTimeout("HID registration timed out",HidDeadline.Operation.REGISTRATION)
                         publish()
@@ -102,7 +103,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
     }
     private fun callback(session: Int) = object : BluetoothHidDevice.Callback() {
         override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
-            trace("app callbackSession=$session currentSession=$generation active=$active registered=$registered pluggedHost=${pluggedDevice != null}")
+            trace { "app callbackSession=$session currentSession=$generation active=$active registered=$registered pluggedHost=${pluggedDevice != null}" }
             if (session != generation || !active) return
             cancelTimeout(HidDeadline.Operation.REGISTRATION)
             state = state.copy(registered = registered, hid = if (registered) "Registered" else "Unregistered")
@@ -114,7 +115,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
             publish()
         }
         override fun onConnectionStateChanged(device: BluetoothDevice, connectionState: Int) {
-            trace("connection callbackSession=$session currentSession=$generation active=$active state=$connectionState matchingHost=${host == null || host == device}")
+            trace { "connection callbackSession=$session currentSession=$generation active=$active state=$connectionState matchingHost=${host == null || host == device}" }
             if (session != generation || !active) return
             val bonded = device in adapter!!.bondedDevices
             if (!ConnectionCallbacks.accepts(session,generation,active,host?.address,device.address,
@@ -136,7 +137,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
             publish()
         }
         override fun onGetReport(device: BluetoothDevice, type: Byte, id: Byte, bufferSize: Int) {
-            trace("getReport callbackSession=$session type=$type id=$id bufferSize=$bufferSize")
+            trace { "getReport callbackSession=$session type=$type id=$id bufferSize=$bufferSize" }
             if (session != generation || !active || host != device) return
             val report = when (type) {
                 BluetoothHidDevice.REPORT_TYPE_INPUT -> CompositeReports.input(id.toInt(),bootProtocol,buttons.move(0,0),keyboard.report())
@@ -150,7 +151,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         override fun onSetProtocol(device: BluetoothDevice, protocol: Byte) {
             if (session != generation || !active || host != device) return
             bootProtocol = protocol == BluetoothHidDevice.PROTOCOL_BOOT_MODE
-            trace("protocol=$protocol boot=$bootProtocol; wheel available only in report mode")
+            trace { "protocol=$protocol boot=$bootProtocol; wheel available only in report mode" }
         }
         override fun onSetReport(device: BluetoothDevice, type: Byte, id: Byte, data: ByteArray) {
             if (session != generation || !active || host != device) return
@@ -163,7 +164,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
             CompositeReports.leds(reportId.toInt(),data)?.let { keyboardLeds = it }
         }
         override fun onVirtualCableUnplug(device: BluetoothDevice) {
-            trace("virtual cable unplug callbackSession=$session currentSession=$generation")
+            trace { "virtual cable unplug callbackSession=$session currentSession=$generation" }
             if (session == generation && active && host == device) { cancelTimeout(); reconnect.disconnect(); preferences.edit().putBoolean("paused",true).apply(); cancelRetry(); inputSession.invalidate(); host = null; bootProtocol = false; inputs.releaseAll(bootProtocol); keyboardLeds = 0; state = state.copy(connected = false, busy = false, connection = "Disconnected"); publish() }
         }
     }
@@ -253,19 +254,19 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
     fun move(dx: Int, dy: Int) {
         val queuedAt = SystemClock.elapsedRealtime()
         inputWork {
-            trace("move dx=$dx dy=$dy queueMs=${SystemClock.elapsedRealtime() - queuedAt} connected=${state.connected} registered=${state.registered} active=$active")
-            if (state.connected) send(buttons.move(dx, dy)) else trace("move dropped: disconnected")
+            trace { "move dx=$dx dy=$dy queueMs=${SystemClock.elapsedRealtime() - queuedAt} connected=${state.connected} registered=${state.registered} active=$active" }
+            if (state.connected) send(buttons.move(dx, dy)) else trace { "move dropped: disconnected" }
         }
     }
     fun scroll(wheel: Int) {
         val queuedAt = SystemClock.elapsedRealtime()
         inputWork {
-            if (Log.isLoggable(TAG, Log.DEBUG)) trace("scroll wheel=$wheel queueMs=${SystemClock.elapsedRealtime() - queuedAt} connected=${state.connected} boot=$bootProtocol")
+            if (Diagnostics.isEnabled(TAG)) trace { "scroll wheel=$wheel queueMs=${SystemClock.elapsedRealtime() - queuedAt} connected=${state.connected} boot=$bootProtocol" }
             if (state.connected && !bootProtocol) send(buttons.scroll(wheel))
-            else trace("scroll dropped connected=${state.connected} boot=$bootProtocol")
+            else trace { "scroll dropped connected=${state.connected} boot=$bootProtocol" }
         }
     }
-    fun press() = inputWork { trace("press connected=${state.connected}"); if (state.connected) send(buttons.press()) }
+    fun press() = inputWork { trace { "press connected=${state.connected}" }; if (state.connected) send(buttons.press()) }
     fun release() = inputWork {
         val report = buttons.releasePhysical()
         if (state.connected) send(report)
@@ -274,7 +275,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         val queuedAt = SystemClock.uptimeMillis()
         inputWork {
             val allowed = state.connected && (!down || !buttons.physicalHeld())
-            trace("gesture_submit mask=$mask down=$down queuedAt=$queuedAt queueMs=${SystemClock.uptimeMillis()-queuedAt} allowed=$allowed")
+            trace { "gesture_submit mask=$mask down=$down queuedAt=$queuedAt queueMs=${SystemClock.uptimeMillis()-queuedAt} allowed=$allowed" }
             if (allowed) send(buttons.change("gesture",mask,down))
         }
     }
@@ -289,7 +290,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
     fun keyTap(stroke: UsKeyboard.Stroke) = inputWork {
         if (state.connected) {
             val reports = keyboard.tap(stroke)
-            if (Log.isLoggable(TAG,Log.DEBUG)) trace("keyboard engine generated reports=${reports.size}")
+            if (Diagnostics.isEnabled(TAG)) trace { "keyboard engine generated reports=${reports.size}" }
             reports.forEach { sendKeyboard(it) }
         } else Log.w(TAG,"Keyboard event dropped: disconnected")
         publish()
@@ -300,7 +301,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         inputWork {
         if (!state.connected || bootProtocol) return@inputWork
         val reports = ZoomReports.sequence(compatibility,steps,keyboard.report(),buttons.move(0,0))
-        trace("zoom compatibility=$compatibility steps=$steps reports=${reports.size} queueMs=${SystemClock.elapsedRealtime() - queuedAt}")
+        trace { "zoom compatibility=$compatibility steps=$steps reports=${reports.size} queueMs=${SystemClock.elapsedRealtime() - queuedAt}" }
         reports.forEach { if (state.connected) transmit(it.id,it.payload) }
         }
     }
@@ -313,13 +314,13 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         val sequence = ++reportSequence
         val device = host ?: return
         // Never log keyboard contents; keep transport metadata for debugging.
-        if (Log.isLoggable(TAG,Log.DEBUG)) trace("send sequence=$sequence id=$id length=${payload.size}")
-        if (id == CompositeReports.MOUSE_ID && Log.isLoggable(TAG,Log.DEBUG)) {
-            trace("mouse payload=${payload.joinToString(" ") { "%02x".format(it.toInt() and 255) }} x=${payload[1]} y=${payload[2]}")
+        if (Diagnostics.isEnabled(TAG)) trace { "send sequence=$sequence id=$id length=${payload.size}" }
+        if (id == CompositeReports.MOUSE_ID && Diagnostics.isEnabled(TAG)) {
+            trace { "mouse payload=${payload.joinToString(" ") { "%02x".format(it.toInt() and 255) }} x=${payload[1]} y=${payload[2]}" }
         }
         val sendStarted = SystemClock.elapsedRealtime()
         val accepted = profile?.sendReport(device,id,payload)
-        trace("send sequence=$sequence accepted=$accepted sendMs=${SystemClock.elapsedRealtime() - sendStarted} (request acceptance, not host delivery)")
+        trace { "send sequence=$sequence accepted=$accepted sendMs=${SystemClock.elapsedRealtime() - sendStarted} (request acceptance, not host delivery)" }
         if (accepted != true) {
             Log.w(TAG,"Report rejected; releasing mouse and keyboard before disconnect")
             inputSession.invalidate(); inputs.releaseAll(bootProtocol)
@@ -338,7 +339,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
     private fun armTimeout(message: String, operation: HidDeadline.Operation) {
         if (!deadline.begin(operation)) return
         timeout?.let { main.removeCallbacks(it) }
-        trace("deadline armed operation=$operation timeoutMs=12000")
+        trace { "deadline armed operation=$operation timeoutMs=12000" }
         val session = generation
         val revision = deadline.revision
         timeout = Runnable { work { if (session == generation && active && deadline.revision == revision && deadline.operation == operation) {
@@ -348,9 +349,9 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         } } }
         main.postDelayed(timeout!!, 12000)
     }
-    fun stop() { inputSession.invalidate(); work { trace("stop"); foreground = false; cancelRetry(); reconnect.cancel(); close(); state = state.copy(bluetooth = when { !BluetoothPermissions.granted(app) -> "Permission required"; adapter == null -> "Unavailable"; !adapter.isEnabled -> "Disabled"; else -> "Enabled" },hid = "Inactive", error = ""); publish() } }
+    fun stop() { inputSession.invalidate(); work { trace { "stop" }; foreground = false; cancelRetry(); reconnect.cancel(); close(); state = state.copy(bluetooth = when { !BluetoothPermissions.granted(app) -> "Permission required"; adapter == null -> "Unavailable"; !adapter.isEnabled -> "Disabled"; else -> "Enabled" },hid = "Inactive", error = ""); publish() } }
     private fun close() {
-        trace("close session=$generation connected=${state.connected} pressed=${buttons.pressed}")
+        trace { "close session=$generation connected=${state.connected} pressed=${buttons.pressed}" }
         cancelRetry(); inputSession.invalidate(); active = false; generation++; cancelTimeout(); val neutral = inputs.releaseAll(bootProtocol); keyboardLeds = 0
         val old = profile; val device = host
         profile = null; host = null; disconnecting = false
