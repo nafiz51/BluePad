@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 — release candidate: touchpad double-click reliability
+
+- Increase synthetic touchpad click-edge spacing from 20 to 40 ms; recognized double-click edges are nominally at 0/40/80/120 ms.
+- Preserve the 120 ms first-click delivery deadline, recognition window, immediate dedicated buttons and dragging behavior. Synthetic release completes 20 ms later.
+- Add eight timing/ordering/cancellation regressions; 239 tests and all eight Vivo-to-Ubuntu hardware checks passed.
+- Version code 4; package, existing signing identity, saved preferences and HID engine remain unchanged.
+- Actual host delivery spacing under transport backlog is not guaranteed. Broader compatibility, keyboard mapping and long-session limits remain.
+- No commit, tag or publication is included in release preparation.
+
 ## 1.1.0 — Bluetooth onboarding
 
 - Opening the Bluetooth panel requests missing permission and Bluetooth enablement using native Android dialogs.

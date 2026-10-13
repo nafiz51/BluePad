@@ -12,6 +12,7 @@ class TouchpadGestures(
     private val diagnostic: (((() -> String)) -> Unit)? = null,
     private val emit: (ButtonChange) -> Unit
 ) {
+    companion object { const val CLICK_EDGE_MS = 40L }
     data class ButtonChange(val mask: Int, val down: Boolean)
     enum class Phase { IDLE, SINGLE_TAP, TWO_TAP, SECOND_TAP, DRAG, MOTION }
     var phase = Phase.IDLE

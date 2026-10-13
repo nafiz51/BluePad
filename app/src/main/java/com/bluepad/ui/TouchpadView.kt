@@ -37,7 +37,7 @@ class TouchpadView @JvmOverloads constructor(
         ViewConfiguration.getLongPressTimeout().coerceAtMost(250).toLong(),
         ViewConfiguration.getDoubleTapTimeout().toLong(),
         ViewConfiguration.getTapTimeout().coerceAtLeast(180).toLong(),
-        clickGapMs = 20,
+        clickGapMs = TouchpadGestures.CLICK_EDGE_MS,
         reportClock = { SystemClock.uptimeMillis() },
         diagnostic = if (debugTrace) { message -> if (Diagnostics.isEnabled(TAG)) trace { message() } } else null
     ) { change ->
