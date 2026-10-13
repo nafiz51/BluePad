@@ -20,6 +20,7 @@ import com.bluepad.bluetooth.BluetoothPermissions
 import com.bluepad.bluetooth.HidManager
 import com.bluepad.ui.TouchpadView
 import com.bluepad.ui.MouseClickButton
+import com.bluepad.hid.HostOs
 
 class MainActivity : Activity() {
     private companion object { const val TAG = "BluePadUi" }
@@ -32,6 +33,7 @@ class MainActivity : Activity() {
     private lateinit var click: Button
     private lateinit var rightClick: Button
     private var physicalButtons = 0
+    private var hostOs = HostOs.WINDOWS_LINUX
     private lateinit var pad: TouchpadView
     private lateinit var keyboardView: KeyboardView
     private lateinit var keyboardToggle: ImageButton
@@ -77,7 +79,7 @@ class MainActivity : Activity() {
         settings.visibility = View.VISIBLE
         val settingsToggle = ImageButton(this).apply {
             setImageResource(android.R.drawable.ic_menu_preferences)
-            contentDescription = "Sensitivity settings"
+            contentDescription = "Sensitivity and host OS settings"
             isFocusable = false
             setOnClickListener {
                 connectionScroll.visibility = View.GONE
@@ -124,8 +126,21 @@ class MainActivity : Activity() {
         devices = Spinner(this); connectionPanel.addView(devices)
         connect = button("Connect") { paired.getOrNull(devices.selectedItemPosition)?.let { hid.connect(it) } }
         disconnect = button("Disconnect") { hid.disconnect() }
-        pad = TouchpadView(this, { dx,dy -> hid.move(dx,dy) }, { wheel -> hid.scroll(wheel) }, { mask, down -> hid.gestureButton(mask,down) })
+        pad = TouchpadView(this, { dx,dy -> hid.move(dx,dy) }, { wheel -> hid.scroll(wheel) }, { mask, down -> hid.gestureButton(mask,down) }, { steps -> hid.zoom(hostOs,steps) })
         val preferences = getSharedPreferences("touchpad", MODE_PRIVATE)
+        hostOs = HostOs.restore(preferences.getString("host_os",null))
+        settings.addView(TextView(this).apply { setText(R.string.host_os) })
+        settings.addView(Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,listOf("Windows / Linux","macOS"))
+            setSelection(hostOs.ordinal)
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    hostOs = HostOs.entries[position]
+                    preferences.edit().putString("host_os",hostOs.name).apply()
+                }
+            }
+        })
         val initialSensitivity = PointerSensitivity.restore(preferences.getFloat("sensitivity", PointerSensitivity.DEFAULT))
         pad.sensitivity = initialSensitivity
         val sensitivityLabel = TextView(this)

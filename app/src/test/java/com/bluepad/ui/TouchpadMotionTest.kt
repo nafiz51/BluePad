@@ -68,9 +68,9 @@ class TouchpadMotionTest {
         motion.sample(listOf(finger(0,99f,74f)),100f)
         assertTrue(motion.drain().empty) // Horizontal-only edge motion is ignored.
     }
-    @Test fun rightmostTenPercentIncludesTheExactBoundary() {
+    @Test fun rightmostTwelvePercentIncludesTheExactBoundary() {
         for (width in listOf(100f,200f,400f)) {
-            val boundary = width * 0.9f
+            val boundary = width * 0.88f
             for (start in listOf(boundary - 0.01f,boundary,width - 0.01f)) {
                 val motion = TouchpadMotion()
                 motion.sample(listOf(finger(0,start,50f)),width)
@@ -103,7 +103,7 @@ class TouchpadMotionTest {
             motion.sample(listOf(finger(1,99f,-24f)),100f)
             assertTrue(motion.drain().empty) // Lift rebases without an artificial delta.
             motion.sample(listOf(finger(1,99f,-48f)),100f)
-            val expected = if (start >= 90f) TouchpadMotion.Delta(0,0,1) else TouchpadMotion.Delta(0,-24,0)
+            val expected = if (start >= 88f) TouchpadMotion.Delta(0,0,1) else TouchpadMotion.Delta(0,-24,0)
             assertEquals(expected,motion.drain())
         }
     }

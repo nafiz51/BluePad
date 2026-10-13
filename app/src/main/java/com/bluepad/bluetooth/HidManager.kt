@@ -11,6 +11,8 @@ import com.bluepad.hid.CompositeReports
 import com.bluepad.hid.HidInputState
 import com.bluepad.hid.UsKeyboard
 import com.bluepad.hid.MouseReports
+import com.bluepad.hid.HostOs
+import com.bluepad.hid.ZoomReports
 import java.util.concurrent.Executors
 
 /** All mutable state lives on a serial worker. UI receives immutable snapshots. */
@@ -21,6 +23,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         val devices: List<BluetoothDevice> = emptyList(), val deviceNames: List<String> = emptyList(), val registered: Boolean = false,
         val connected: Boolean = false, val modifiers: Int = 0, val busy: Boolean = false, val error: String = "")
     private val app = context.applicationContext
+    private val debugTrace = app.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
     private val adapter = app.getSystemService(BluetoothManager::class.java)?.adapter
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -39,7 +42,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
     private val deadline = HidDeadline()
     private var reportSequence = 0L
     // Opt in for a short hardware trace: adb shell setprop log.tag.BluePadHid DEBUG
-    private fun trace(message: String) { if (Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG, message) }
+    private fun trace(message: String) { if (debugTrace && Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG, "uptime=${SystemClock.uptimeMillis()} $message") }
     private fun publish() { state = state.copy(modifiers = keyboard.modifiers); trace("state session=$generation active=$active registered=${state.registered} connected=${state.connected} busy=${state.busy} profile=${profile != null} host=${host != null} hid=${state.hid} connection=${state.connection}"); val snapshot = state; main.post { update(snapshot) } }
     private fun work(block: () -> Unit) { synchronized(worker) { if (worker.isShutdown) return; worker.execute {
         try { block() } catch (e: SecurityException) { Log.e(TAG, "Bluetooth permission failure; closing session", e); close(); state = State(bluetooth = "Permission required", error = "Grant Nearby devices permission."); publish() }
@@ -170,8 +173,13 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         val report = buttons.releasePhysical()
         if (state.connected) send(report)
     }
-    fun gestureButton(mask: Int, down: Boolean) = work {
-        if (state.connected && (!down || !buttons.physicalHeld())) send(buttons.change("gesture",mask,down))
+    fun gestureButton(mask: Int, down: Boolean) {
+        val queuedAt = SystemClock.uptimeMillis()
+        work {
+            val allowed = state.connected && (!down || !buttons.physicalHeld())
+            trace("gesture_submit mask=$mask down=$down queuedAt=$queuedAt queueMs=${SystemClock.uptimeMillis()-queuedAt} allowed=$allowed")
+            if (allowed) send(buttons.change("gesture",mask,down))
+        }
     }
     fun physicalButton(mask: Int, down: Boolean) = work {
         if (down && !state.connected) return@work
@@ -190,6 +198,15 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         publish()
     }
     fun releaseInputs() = work { releaseInternal(); publish() }
+    fun zoom(os: HostOs, steps: Int) {
+        val queuedAt = SystemClock.elapsedRealtime()
+        work {
+        if (!state.connected || bootProtocol) return@work
+        val reports = ZoomReports.sequence(os,steps,keyboard.report(),buttons.move(0,0))
+        trace("zoom os=$os steps=$steps reports=${reports.size} queueMs=${SystemClock.elapsedRealtime() - queuedAt}")
+        reports.forEach { if (state.connected) transmit(it.id,it.payload) }
+        }
+    }
     private fun releaseInternal() {
         inputs.releaseAll(bootProtocol).forEach { if (state.connected) transmit(it.id,it.payload) }
     }
@@ -203,8 +220,9 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         if (id == CompositeReports.MOUSE_ID && Log.isLoggable(TAG,Log.DEBUG)) {
             trace("mouse payload=${payload.joinToString(" ") { "%02x".format(it.toInt() and 255) }} x=${payload[1]} y=${payload[2]}")
         }
+        val sendStarted = SystemClock.elapsedRealtime()
         val accepted = profile?.sendReport(device,id,payload)
-        trace("send sequence=$sequence accepted=$accepted (request acceptance, not host delivery)")
+        trace("send sequence=$sequence accepted=$accepted sendMs=${SystemClock.elapsedRealtime() - sendStarted} (request acceptance, not host delivery)")
         if (accepted != true) {
             Log.w(TAG,"Report rejected; releasing mouse and keyboard before disconnect")
             inputs.releaseAll(bootProtocol)

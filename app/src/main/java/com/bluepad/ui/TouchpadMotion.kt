@@ -6,7 +6,7 @@ import kotlin.math.roundToInt
 class TouchpadMotion {
     companion object {
         const val SCROLL_DP_PER_TICK = 20f
-        fun scrollZoneStart(width: Float) = width * 0.9f
+        fun scrollZoneStart(width: Float) = width * 0.88f
     }
     data class Finger(val id: Int, val x: Float, val y: Float)
     data class Delta(val x: Int, val y: Int, val wheel: Int) {

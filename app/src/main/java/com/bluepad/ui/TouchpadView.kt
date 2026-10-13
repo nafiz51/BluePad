@@ -14,17 +14,25 @@ class TouchpadView @JvmOverloads constructor(
     context: Context,
     private val move: (Int, Int) -> Unit = { _, _ -> },
     private val scroll: (Int) -> Unit = {},
-    private val gestureButton: (Int, Boolean) -> Unit = { _, _ -> }
+    private val gestureButton: (Int, Boolean) -> Unit = { _, _ -> },
+    private val zoom: (Int) -> Unit = {}
 ) : TextView(context) {
     private companion object { const val TAG = "BluePadTouch" }
+    private val debugTrace = context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
     private val motion = TouchpadMotion()
+    private val pinch = PinchGesture()
+    private var pinchSession = false
+    private val zoomPacer = ZoomPacer()
     private val configuration = ViewConfiguration.get(context)
     private val gestures = TouchpadGestures(
         configuration.scaledTouchSlop / resources.displayMetrics.density,
         configuration.scaledDoubleTapSlop / resources.displayMetrics.density,
         ViewConfiguration.getLongPressTimeout().coerceAtMost(250).toLong(),
         ViewConfiguration.getDoubleTapTimeout().toLong(),
-        ViewConfiguration.getTapTimeout().toLong()
+        ViewConfiguration.getTapTimeout().coerceAtLeast(180).toLong(),
+        clickGapMs = 20,
+        reportClock = { SystemClock.uptimeMillis() },
+        diagnostic = if (debugTrace) { message -> if (Log.isLoggable(TAG,Log.DEBUG)) trace(message()) } else null
     ) { change ->
         trace("gesture button mask=${change.mask} down=${change.down}")
         if (!change.down) flushMotion()
@@ -34,13 +42,15 @@ class TouchpadView @JvmOverloads constructor(
     private var gestureSuppressed = false
     private var sampledPointers = emptySet<Int>()
     private val hold = Runnable {
-        if (isEnabled && !physicalHeld && !gestureSuppressed) gestures.advance(SystemClock.uptimeMillis())
+        if (isEnabled && !physicalHeld && !gestureSuppressed) { gestures.advance(SystemClock.uptimeMillis()); scheduleHold() }
     }
     fun setPhysicalButtonHeld(held: Boolean) {
         physicalHeld = held; gestureSuppressed = true
+        pinch.reset(); pinchSession = false; zoomPacer.cancel()
         removeCallbacks(hold); gestures.cancel()
     }
     private fun scheduleHold() {
+        trace("timer_reschedule due=${gestures.holdDeadline}")
         removeCallbacks(hold)
         gestures.holdDeadline?.let { postDelayed(hold, (it - SystemClock.uptimeMillis()).coerceAtLeast(0)) }
     }
@@ -66,17 +76,23 @@ class TouchpadView @JvmOverloads constructor(
         canvas.drawLine(boundary, 0f, boundary, height.toFloat(), separatorPaint)
         super.onDraw(canvas)
     }
-    private fun trace(message: String) { if (Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG, message) }
+    private fun trace(message: String) { if (debugTrace && Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG, "uptime=${SystemClock.uptimeMillis()} $message") }
     private fun scheduleFrame() {
-        if (!framePending && motion.hasPendingReport) { framePending = true; postOnAnimation(frame) }
+        if (!framePending && (motion.hasPendingReport || zoomPacer.pending)) {
+            framePending = true
+            val delay = if (motion.hasPendingReport) 0L else zoomPacer.delay(SystemClock.uptimeMillis())
+            if (delay == 0L) postOnAnimation(frame) else postDelayed(frame,delay)
+        }
     }
     private fun emitFrame() {
+        val zoomSteps = zoomPacer.poll(SystemClock.uptimeMillis())
+        if (zoomSteps != 0) zoom(zoomSteps)
         val delta = motion.drain()
         trace("frame dx=${delta.x} dy=${delta.y} wheel=${delta.wheel} sensitivity=$sensitivity")
         if (delta.x != 0 || delta.y != 0) move(delta.x, delta.y)
         if (delta.wheel != 0) scroll(delta.wheel)
         // Drain any overflow on later frames instead of dropping fast swipes at report bounds.
-        if (motion.hasPendingReport) scheduleFrame()
+        if (motion.hasPendingReport || zoomPacer.pending) scheduleFrame()
     }
     private fun flushMotion() {
         if (!isEnabled) return
@@ -88,7 +104,9 @@ class TouchpadView @JvmOverloads constructor(
         }
     }
     private fun cancelMotion(resetGestures: Boolean = true) {
+        trace("motion_cancel resetGestures=$resetGestures timerDue=${gestures.holdDeadline}")
         removeCallbacks(frame); removeCallbacks(hold); framePending = false; motion.reset(); sampledPointers = emptySet()
+        pinch.reset(); pinchSession = false; zoomPacer.cancel()
         if (resetGestures) gestures.cancel()
         parent?.requestDisallowInterceptTouchEvent(false)
     }
@@ -98,7 +116,7 @@ class TouchpadView @JvmOverloads constructor(
     }
     override fun onDetachedFromWindow() { physicalHeld = false; gestureSuppressed = false; cancelMotion(); super.onDetachedFromWindow() }
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        trace("event action=${event.actionMasked} enabled=$isEnabled count=${event.pointerCount}")
+        trace("event action=${MotionEvent.actionToString(event.action)} eventTime=${event.eventTime} downTime=${event.downTime} history=${event.historySize} enabled=$isEnabled count=${event.pointerCount}")
         if (!isEnabled) return false
         when (event.actionMasked) {
             MotionEvent.ACTION_CANCEL -> cancelMotion()
@@ -120,10 +138,18 @@ class TouchpadView @JvmOverloads constructor(
                     }
                     val now = history?.let { event.getHistoricalEventTime(it) } ?: event.eventTime
                     val before = gestures.phase
-                    if (!physicalHeld && !gestureSuppressed) gestures.sample(now,fingers,width / density)
+                    val steps = if (!physicalHeld && !gestureSuppressed && (!pinchSession || pinch.mode == PinchGesture.Mode.PINCH)) pinch.sample(fingers) else 0
+                    if (pinch.mode == PinchGesture.Mode.PINCH && !pinchSession) {
+                        pinchSession = true; gestures.cancel(); motion.reset(); removeCallbacks(hold)
+                    }
+                    if (pinchSession) { if (fingers.size == 2) zoomPacer.submit(steps) else zoomPacer.cancel() }
+                    val ending = history == null && event.actionMasked == MotionEvent.ACTION_UP
+                    if (!physicalHeld && !gestureSuppressed && !pinchSession) gestures.sample(now,fingers,width / density,ending)
+                    if (ending) trace("terminal UP gesture before=$before after=${gestures.phase}")
                     if (before != gestures.phase) trace("gesture $before -> ${gestures.phase} time=$now")
                     val pointers = fingers.map { it.id }.toSet()
-                    if (physicalHeld || gestureSuppressed || gestures.allowsMotion || pointers != sampledPointers) {
+                    val classifiedMotion = fingers.size != 2 || pinch.mode == PinchGesture.Mode.SCROLL || physicalHeld || gestureSuppressed
+                    if (!pinchSession && ((classifiedMotion && (physicalHeld || gestureSuppressed || gestures.allowsMotion)) || pointers != sampledPointers)) {
                         motion.sample(fingers, width / density)
                     }
                     sampledPointers = pointers
@@ -135,10 +161,12 @@ class TouchpadView @JvmOverloads constructor(
                 sample()
                 if (event.actionMasked == MotionEvent.ACTION_POINTER_UP) sample(skipLifted = true)
                 if (event.actionMasked == MotionEvent.ACTION_UP) {
-                    if (!physicalHeld && !gestureSuppressed) gestures.sample(event.eventTime,emptyList(),width / density)
+                    if (!physicalHeld && !gestureSuppressed && !pinchSession) gestures.sample(event.eventTime,emptyList(),width / density)
+                    if (pinchSession) { zoomPacer.cancel(); pinch.reset() }
                     motion.sample(emptyList()); sampledPointers = emptySet(); removeCallbacks(hold)
                     parent?.requestDisallowInterceptTouchEvent(false)
                     performClick()
+                    scheduleHold()
                 }
                 scheduleFrame()
             }
