@@ -11,7 +11,7 @@ import com.bluepad.hid.CompositeReports
 import com.bluepad.hid.HidInputState
 import com.bluepad.hid.UsKeyboard
 import com.bluepad.hid.MouseReports
-import com.bluepad.hid.HostOs
+import com.bluepad.hid.ZoomCompatibility
 import com.bluepad.hid.ZoomReports
 import java.util.concurrent.Executors
 
@@ -295,12 +295,12 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         publish()
     }
     fun releaseInputs() = work { releaseInternal(); publish() }
-    fun zoom(os: HostOs, steps: Int) {
+    fun zoom(compatibility: ZoomCompatibility, steps: Int) {
         val queuedAt = SystemClock.elapsedRealtime()
         inputWork {
         if (!state.connected || bootProtocol) return@inputWork
-        val reports = ZoomReports.sequence(os,steps,keyboard.report(),buttons.move(0,0))
-        trace("zoom os=$os steps=$steps reports=${reports.size} queueMs=${SystemClock.elapsedRealtime() - queuedAt}")
+        val reports = ZoomReports.sequence(compatibility,steps,keyboard.report(),buttons.move(0,0))
+        trace("zoom compatibility=$compatibility steps=$steps reports=${reports.size} queueMs=${SystemClock.elapsedRealtime() - queuedAt}")
         reports.forEach { if (state.connected) transmit(it.id,it.payload) }
         }
     }

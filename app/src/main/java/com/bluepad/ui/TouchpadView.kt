@@ -20,6 +20,12 @@ class TouchpadView @JvmOverloads constructor(
     private companion object { const val TAG = "BluePadTouch" }
     private val debugTrace = context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
     private val motion = TouchpadMotion()
+    var scrollSettings = ScrollSettings()
+        set(value) {
+            if (field == value) return
+            cancelMotion(); field = value
+            motion.naturalScrolling = value.natural; motion.scrollSensitivity = value.sensitivity
+        }
     private val pinch = PinchGesture()
     private var pinchSession = false
     private val zoomPacer = ZoomPacer()
@@ -143,6 +149,7 @@ class TouchpadView @JvmOverloads constructor(
                         pinchSession = true; gestures.cancel(); motion.reset(); removeCallbacks(hold)
                     }
                     if (pinchSession) { if (fingers.size == 2) zoomPacer.submit(steps) else zoomPacer.cancel() }
+                    if (fingers.size == 2 && pinch.mode == PinchGesture.Mode.SCROLL && !pinchSession && !physicalHeld && !gestureSuppressed) gestures.suppressTaps()
                     val ending = history == null && event.actionMasked == MotionEvent.ACTION_UP
                     if (!physicalHeld && !gestureSuppressed && !pinchSession) gestures.sample(now,fingers,width / density,ending)
                     if (ending) trace("terminal UP gesture before=$before after=${gestures.phase}")

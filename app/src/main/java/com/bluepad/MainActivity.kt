@@ -20,7 +20,8 @@ import com.bluepad.bluetooth.BluetoothPermissions
 import com.bluepad.bluetooth.HidManager
 import com.bluepad.ui.TouchpadView
 import com.bluepad.ui.MouseClickButton
-import com.bluepad.hid.HostOs
+import com.bluepad.hid.ZoomCompatibility
+import com.bluepad.ui.ScrollSettingsView
 
 class MainActivity : Activity() {
     private companion object { const val TAG = "BluePadUi" }
@@ -35,7 +36,7 @@ class MainActivity : Activity() {
     private lateinit var click: Button
     private lateinit var rightClick: Button
     private var physicalButtons = 0
-    private var hostOs = HostOs.WINDOWS_LINUX
+    private var zoomCompatibility = ZoomCompatibility.STANDARD
     private lateinit var pad: TouchpadView
     private lateinit var keyboardView: KeyboardView
     private lateinit var keyboardToggle: ImageButton
@@ -88,7 +89,7 @@ class MainActivity : Activity() {
         settings.visibility = View.VISIBLE
         val settingsToggle = ImageButton(this).apply {
             setImageResource(android.R.drawable.ic_menu_preferences)
-            contentDescription = "Sensitivity and host OS settings"
+            contentDescription = "Sensitivity, scrolling and zoom compatibility settings"
             isFocusable = false
             setOnClickListener {
                 connectionScroll.visibility = View.GONE
@@ -136,23 +137,24 @@ class MainActivity : Activity() {
         connect = button("Connect") { paired.getOrNull(devices.selectedItemPosition)?.let { hid.connect(it) } }
         disconnect = button("Disconnect") { hid.disconnect() }
         reconnectLast = button(getString(R.string.reconnect_last)) { hid.reconnectLast() }
-        pad = TouchpadView(this, { dx,dy -> hid.move(dx,dy) }, { wheel -> hid.scroll(wheel) }, { mask, down -> hid.gestureButton(mask,down) }, { steps -> hid.zoom(hostOs,steps) })
+        pad = TouchpadView(this, { dx,dy -> hid.move(dx,dy) }, { wheel -> hid.scroll(wheel) }, { mask, down -> hid.gestureButton(mask,down) }, { steps -> hid.zoom(zoomCompatibility,steps) })
         val preferences = getSharedPreferences("touchpad", MODE_PRIVATE)
         settings.addView(Switch(this).apply {
             setText(R.string.automatic_reconnect)
             isChecked = getSharedPreferences("connection",MODE_PRIVATE).getBoolean("automatic",true)
             setOnCheckedChangeListener { _,enabled -> hid.setAutomaticReconnect(enabled) }
         })
-        hostOs = HostOs.restore(preferences.getString("host_os",null))
-        settings.addView(TextView(this).apply { setText(R.string.host_os) })
+        zoomCompatibility = ZoomCompatibility.restore(preferences.getString("zoom_compatibility",null),preferences.getString("host_os",null))
+        preferences.edit().putString("zoom_compatibility",zoomCompatibility.name).remove("host_os").apply()
+        settings.addView(TextView(this).apply { setText(R.string.zoom_compatibility) })
         settings.addView(Spinner(this).apply {
-            adapter = ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,listOf("Windows / Linux","macOS"))
-            setSelection(hostOs.ordinal)
+            adapter = ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,listOf(getString(R.string.zoom_standard),getString(R.string.zoom_macos)))
+            setSelection(zoomCompatibility.ordinal)
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onNothingSelected(parent: AdapterView<*>?) {}
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    hostOs = HostOs.entries[position]
-                    preferences.edit().putString("host_os",hostOs.name).apply()
+                    zoomCompatibility = ZoomCompatibility.entries[position]
+                    preferences.edit().putString("zoom_compatibility",zoomCompatibility.name).apply()
                 }
             }
         })
@@ -177,6 +179,7 @@ class MainActivity : Activity() {
                 }
             })
         })
+        settings.addView(ScrollSettingsView(this) { pad.scrollSettings = it })
         root.addView(pad, LinearLayout.LayoutParams(-1,0,1f))
         val buttonRow = LinearLayout(this)
         fun mouseButton(mask: Int, label: Int) = MouseClickButton(this,

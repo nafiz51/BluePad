@@ -115,6 +115,10 @@ class TouchpadGestures(
         if (clickHeld) { val mask = clicks.firstOrNull()?.mask ?: 1; emit(ButtonChange(mask,false)) }
         clickHeld = false; clicks.clear(); clickDue = null
     }
+    fun suppressTaps() {
+        if (phase == Phase.DRAG) emit(ButtonChange(1,false))
+        firstTap = null; phase = Phase.MOTION
+    }
     fun cancel() {
         diagnostic?.invoke { "gesture_cancel t=$clock phase=$phase pendingSingle=${firstTap != null}" }
         cancelClicks()

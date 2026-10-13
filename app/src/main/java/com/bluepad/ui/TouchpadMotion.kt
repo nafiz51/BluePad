@@ -14,6 +14,10 @@ class TouchpadMotion {
     }
     var sensitivity = PointerSensitivity.DEFAULT
         set(value) { require(value.isFinite() && value in PointerSensitivity.MIN..PointerSensitivity.MAX); field = value }
+    var naturalScrolling = false
+    var scrollSensitivity = 1f
+        set(value) { require(value.isFinite() && value in 0.5f..3f); field = value }
+    private val scrollScale get() = scrollSensitivity * if (naturalScrolling) -1 else 1
     private var previous = emptyList<Finger>()
     private var edgeScroll = false
     private var x = 0f
@@ -33,14 +37,14 @@ class TouchpadMotion {
         }
         if (fingers.size == 1) {
             if (edgeScroll) {
-                wheel -= fingers[0].y.toDouble() - previous[0].y.toDouble()
+                wheel -= (fingers[0].y.toDouble() - previous[0].y.toDouble()) * scrollScale
             } else {
                 x += (fingers[0].x - previous[0].x) * sensitivity
                 y += (fingers[0].y - previous[0].y) * sensitivity
             }
         } else if (fingers.size == 2) {
             // Positive wheel scrolls up: moving both fingers upward sends positive ticks.
-            wheel -= (fingers.sumOf { it.y.toDouble() } - previous.sumOf { it.y.toDouble() }) / 2.0
+            wheel -= (fingers.sumOf { it.y.toDouble() } - previous.sumOf { it.y.toDouble() }) / 2.0 * scrollScale
         }
         previous = fingers
     }
