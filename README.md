@@ -2,7 +2,7 @@
 
 BluePad turns an Android phone into an offline Bluetooth Classic HID touchpad and keyboard. **Made by Nafiz51** — Settings → Credits displays the developer credit.
 
-Version **1.0.0**, Android version code **2**. Android 9/API 28 minimum; compile/target API 36. No Internet permission, companion desktop application, root, or runtime library dependencies.
+Version **1.1.0**, Android version code **3**. Android 9/API 28 minimum; compile/target API 36. No Internet permission, companion desktop application, root, or runtime library dependencies.
 
 ## Supported configuration
 
@@ -36,8 +36,8 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`. Installation from a copied APK
 ## Bluetooth pairing and connection
 
 1. Enable Bluetooth on the phone and Ubuntu. Pair through their system Bluetooth settings and confirm the displayed pairing code. BluePad lists bonded devices; it does not scan or pair hosts itself.
-2. Open BluePad and keep it foregrounded. On Android 12+, grant Nearby devices permission using the connection controls if needed.
-3. Open the toolbar Bluetooth control. Wait for HID registration, select Ubuntu and tap Connect. Only the actual Connected callback establishes an input session.
+2. Open BluePad and keep it foregrounded. Tap the toolbar Bluetooth control: missing Nearby devices permission (Android 12+) and Bluetooth enablement are requested through Android dialogs automatically. Denial/cancellation does not loop; use Retry or the explained App Settings action.
+3. Once permission and Bluetooth are available, view paired devices, wait for HID registration, select Ubuntu and tap Connect. An empty list explains how to pair in Android Settings and return/Refresh. Only the actual Connected callback establishes an input session.
 4. Automatic reconnect uses the last successfully connected bonded host. Explicit Disconnect pauses it; manual Connect/Reconnect or re-enabling automatic reconnect resumes it.
 5. If registration or connection fails, inspect the displayed error and use the existing Refresh/Connect controls. Do not routinely delete bonds. Previous descriptor changes sometimes required pairing/service refresh; no descriptor change is included in finalization.
 
@@ -72,16 +72,17 @@ Normal builds disable verbose touch/HID diagnostics even if Android DEBUG proper
 
 The existing debug certificate supports updates to the current verified installation. Preserve the existing keystore securely outside Git; regenerating the usual debug keystore produces a different identity. The finalization process does not generate keys, configure Google Play or configure production signing.
 
-A broadly distributed release should use an explicitly approved durable signing identity and a tested migration/distribution plan. Switching to a different certificate is not an in-place update to the current installation. Do not ship private keys or passwords in source control. Future updates must preserve the application ID/certificate and increase version code above 2.
+A broadly distributed release should use an explicitly approved durable signing identity and a tested migration/distribution plan. Switching to a different certificate is not an in-place update to the current installation. Do not ship private keys or passwords in source control. Future updates must preserve the application ID/certificate and increase version code above 3.
 
 ## Final verification
 
-All 223 automated tests passed; lint passed with one existing AndroidGradlePluginVersion warning; debug build and APK v2 signature verification passed (one signer). Candidate APK: 2,801,502 bytes. The connected Vivo was updated in place from version code 1 to 2 with `adb install -r`; appearance, touchpad, scrolling and connection preference files had identical before/after hashes. This verifies update preservation, not a new independent cross-platform hardware test.
+All 231 automated tests passed; lint passed with one existing AndroidGradlePluginVersion warning; debug build and APK v2 signature verification passed (one signer). v1.1.0 onboarding passed Vivo hardware testing; v1.0.0 remains the previous stable release. The connected Vivo was updated in place from version code 1 to 2 with `adb install -r`; appearance, touchpad, scrolling and connection preference files had identical before/after hashes. This verifies update preservation, not a new independent cross-platform hardware test.
 
 Existing signer: Android Debug, RSA 2048-bit. Certificate SHA-256: `b0fdbbac3bb5a0dfb0dd0b81cb686aefdd58ea0b106f8a14fc5f91f04248bdae`. The existing keystore is `/home/nafiz51/.android/debug.keystore`; keep a secure backup outside Git. No key was generated or replaced.
 
 ## Documentation
 
+- [Bluetooth onboarding](docs/V1_1_BLUETOOTH_ONBOARDING.md)
 - [Final changelog](CHANGELOG.md)
 - [HID rejection recovery](docs/V10_REPORT_REJECTION_RECOVERY.md)
 - [Keyboard memory limits](docs/KEYBOARD_SESSION_MEMORY.md)
@@ -90,4 +91,4 @@ Existing signer: Android Debug, RSA 2048-bit. Certificate SHA-256: `b0fdbbac3bb5
 - [V9 design and quiet diagnostics](docs/V9_NATIVE_UI.md)
 - [Historical Windows diagnostic capture](docs/V10_WINDOWS_HID_DIAGNOSTICS.md)
 
-Earlier local checkpoints remain intact. Source, tests and documentation are intended for the final checkpoint; chat exports, captures, build artifacts and keys are excluded. Final commit/tag awaits explicit approval.
+Earlier local checkpoints remain intact. Source, tests and documentation are intended for the final checkpoint; chat exports, captures, build artifacts and keys are excluded. v1.1.0 publication is authorized following Vivo hardware approval.

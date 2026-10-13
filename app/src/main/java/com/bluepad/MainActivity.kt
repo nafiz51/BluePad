@@ -29,6 +29,7 @@ import com.bluepad.ui.UiStyle
 import com.bluepad.ui.MainUiPolicy
 import com.bluepad.ui.UiNavigation
 import com.bluepad.ui.KeyboardTogglePresentation
+import com.bluepad.ui.BluetoothOnboarding
 
 class MainActivity : Activity() {
     private companion object { const val TAG = "BluePadUi" }
@@ -73,6 +74,9 @@ class MainActivity : Activity() {
     private var lastState = HidManager.State()
     private var paired = emptyList<BluetoothDevice>()
     private var visible = false
+    private lateinit var onboarding: BluetoothOnboarding
+    private lateinit var onboardingStatus: TextView
+    private lateinit var onboardingRetry: Button
     private inline fun trace(message: () -> String) = Diagnostics.debug(TAG,message)
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -91,6 +95,8 @@ class MainActivity : Activity() {
         setTheme(if (appearance.isDark(systemDark)) R.style.BluePadDark else R.style.BluePadLight)
         super.onCreate(savedInstanceState)
         navigation = UiNavigation.restore(savedInstanceState?.getString("panel"))
+        onboarding = BluetoothOnboarding(getSharedPreferences("onboarding",MODE_PRIVATE).getBoolean("blocked",false),
+            BluetoothOnboarding.Action.entries.firstOrNull { it.name == savedInstanceState?.getString("onboarding_pending") } ?: BluetoothOnboarding.Action.NONE)
         uiStyle = UiStyle(appearance.isDark(systemDark),resources.displayMetrics.density)
         layoutTrace = Diagnostics.enabled && Diagnostics.isEnabled("BluePadPerf")
         hid = HidManager(this) { if (!isDestroyed) render(it) }
@@ -155,10 +161,10 @@ class MainActivity : Activity() {
             isFocusable = false
             setOnClickListener { navigation.toggle(UiNavigation.Panel.SETTINGS); renderPanels() }
         }
-        connectionSummary.setOnClickListener { navigation.toggle(UiNavigation.Panel.CONNECTION); renderPanels() }
+        connectionSummary.setOnClickListener { openConnectionPanel() }
         connectionToggle = ImageButton(this).apply {
             setImageResource(R.drawable.ic_connection); isFocusable = false
-            setOnClickListener { navigation.toggle(UiNavigation.Panel.CONNECTION); renderPanels() }
+            setOnClickListener { openConnectionPanel() }
         }
         toolbar.addView(connectionToggle,LinearLayout.LayoutParams(dp(48),dp(48)).apply { marginEnd = dp(4) })
         themeToggle = ImageButton(this).apply {
@@ -187,10 +193,8 @@ class MainActivity : Activity() {
         root.addView(settingsScroll,LinearLayout.LayoutParams(-1,0))
         status = TextView(this); connectionPanel.addView(status)
         fun button(label: String, action: () -> Unit) = Button(this).apply { text = label; setOnClickListener { action() }; connectionPanel.addView(this) }
-        button("Grant permission / Enable Bluetooth") {
-            if (!BluetoothPermissions.granted(this)) BluetoothPermissions.request(this)
-            else try { startActivity(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)) } catch (_: SecurityException) { status.setText(R.string.permission_required) } catch (_: RuntimeException) { status.setText(R.string.enable_unavailable) }
-        }
+        onboardingStatus = TextView(this); connectionPanel.addView(onboardingStatus)
+        onboardingRetry = button(getString(R.string.bluetooth_retry)) { continueOnboarding(manual = true) }
         button("Refresh paired devices and HID") { hid.stop(); if (visible) hid.start() }
         connectionPanel.addView(TextView(this).apply { setText(R.string.pair_first) })
         devices = Spinner(this); connectionPanel.addView(devices)
@@ -392,8 +396,59 @@ class MainActivity : Activity() {
         }
         updateBackHandler()
     }
+    private fun openConnectionPanel() {
+        navigation.toggle(UiNavigation.Panel.CONNECTION); renderPanels()
+        if (navigation.panel == UiNavigation.Panel.CONNECTION) continueOnboarding()
+    }
+    @SuppressLint("MissingPermission") // Adapter state is queried only after the CONNECT permission check.
+    private fun continueOnboarding(manual: Boolean = false) {
+        if (!visible || navigation.panel != UiNavigation.Panel.CONNECTION) return
+        val adapter = getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter
+        val granted = BluetoothPermissions.granted(this)
+        val enabled = granted && adapter?.isEnabled == true
+        val preferences = getSharedPreferences("onboarding",MODE_PRIVATE)
+        val permanent = Build.VERSION.SDK_INT >= 31 && !granted && preferences.getBoolean("requested",false) &&
+            !shouldShowRequestPermissionRationale(android.Manifest.permission.BLUETOOTH_CONNECT)
+        val action = onboarding.next(granted,enabled,adapter != null,permanent,manual)
+        onboardingStatus.setText(when {
+            adapter == null -> R.string.bluetooth_unavailable
+            permanent -> R.string.bluetooth_settings_explanation
+            !granted -> R.string.permission_required
+            !enabled -> R.string.bluetooth_enable_explanation
+            else -> R.string.pair_first
+        })
+        onboardingRetry.setText(if(permanent) R.string.bluetooth_app_settings else R.string.bluetooth_retry)
+        onboardingRetry.visibility = if (granted && enabled) View.GONE else View.VISIBLE
+        try {
+            when(action) {
+                BluetoothOnboarding.Action.PERMISSION -> { preferences.edit().putBoolean("requested",true).apply(); BluetoothPermissions.request(this) }
+                BluetoothOnboarding.Action.ENABLE -> startActivityForResult(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE),2)
+                BluetoothOnboarding.Action.APP_SETTINGS -> startActivityForResult(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.parse("package:$packageName")),3)
+                BluetoothOnboarding.Action.READY -> if (visible) { hid.start(); hid.refreshBondedDevices() }
+                else -> {}
+            }
+        } catch (_: RuntimeException) {
+            onboarding.complete(false); onboardingStatus.setText(R.string.enable_unavailable)
+        }
+        preferences.edit().putBoolean("blocked",onboarding.blocked).apply()
+    }
+    private fun finishOnboardingRequest(success: Boolean) {
+        onboarding.complete(success)
+        getSharedPreferences("onboarding",MODE_PRIVATE).edit().putBoolean("blocked",onboarding.blocked).apply()
+    }
+    @SuppressLint("MissingPermission") // Short-circuited by BluetoothPermissions.granted.
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode,resultCode,data)
+        if (requestCode == 2 || requestCode == 3) {
+            val granted = BluetoothPermissions.granted(this)
+            val success = if(requestCode == 3) granted else granted && getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter?.isEnabled == true
+            finishOnboardingRequest(success); continueOnboarding()
+        }
+    }
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("panel",navigation.panel.name)
+        outState.putString("onboarding_pending",onboarding.pending.name)
         super.onSaveInstanceState(outState)
     }
     private fun handleBack(): Boolean = when(navigation.back(imeVisible || keyboardLayout.open)) {
@@ -460,6 +515,11 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode,permissions,grantResults)
         if (visible) { hid.stop(); hid.start() }
+        if(requestCode == BluetoothPermissions.REQUEST_CODE) { finishOnboardingRequest(BluetoothPermissions.granted(this)); continueOnboarding() }
+    }
+    override fun onResume() {
+        super.onResume()
+        if (::onboarding.isInitialized && onboarding.pending == BluetoothOnboarding.Action.NONE) continueOnboarding()
     }
     @SuppressLint("MissingPermission", "SetTextI18n")
     private fun render(state: HidManager.State) {
@@ -490,6 +550,9 @@ class MainActivity : Activity() {
         state.hostAddress?.let { address -> val index = paired.indexOfFirst { it.address == address }; if (index >= 0) devices.setSelection(index) }
         connect.isEnabled = visible && state.registered && !state.connected && !state.busy && paired.isNotEmpty()
         devices.isEnabled = !state.connected && !state.busy
+        devices.visibility = if(state.devices.isEmpty()) View.GONE else View.VISIBLE
+        if (BluetoothPermissions.granted(this) && state.bluetooth == "Enabled" && onboarding.pending == BluetoothOnboarding.Action.NONE)
+            onboardingStatus.setText(if(state.devices.isEmpty()) R.string.no_paired_computer else R.string.select_host)
         disconnect.isEnabled = visible && (state.connected || state.busy || state.connection == "Reconnecting")
         reconnectLast.isEnabled = visible && state.bluetooth == "Enabled" && state.lastHostAvailable && !state.connected && !state.busy
         pad.isEnabled = visible && state.connected

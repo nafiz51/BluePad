@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 — Bluetooth onboarding
+
+- Opening the Bluetooth panel requests missing permission and Bluetooth enablement using native Android dialogs.
+- Continue to paired devices once ready; explain empty lists and retain explicit Connect. Existing saved-host auto-reconnect is unchanged.
+- Prevent prompt loops after denial/cancellation; provide manual Retry and App Settings guidance for blocked permission.
+- Restore outstanding requests across Activity recreation.
+- Preserve HID, gestures, keyboard, themes, Credits, preferences and the existing signing identity.
+- Version code 3; 231 automated tests and successful Vivo hardware approval. Broader compatibility limitations remain.
+
 ## 1.0.0 — finalization candidate
 
 Based on hardware-verified V9 with approved V10 and milestones 1–4:

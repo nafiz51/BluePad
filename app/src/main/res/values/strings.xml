@@ -39,4 +39,10 @@
 <string name="key_up">Up arrow</string>
 <string name="key_right">Right arrow</string>
 <string name="key_down">Down arrow</string>
+<string name="bluetooth_retry">Retry permission / Enable Bluetooth</string>
+<string name="bluetooth_app_settings">Open App Settings</string>
+<string name="bluetooth_settings_explanation">Nearby devices permission is blocked. Open App Settings, allow it, then return to BluePad.</string>
+<string name="bluetooth_enable_explanation">Enable Bluetooth to see paired computers. If you cancel, use Retry when ready.</string>
+<string name="bluetooth_unavailable">Bluetooth is unavailable on this device.</string>
+<string name="no_paired_computer">No paired devices found. Pair your computer in Android Bluetooth Settings, then return and tap Refresh.</string>
 </resources>
