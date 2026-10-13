@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import com.bluepad.diagnostics.Diagnostics
+import com.bluepad.BuildConfig
 import android.util.Log
 import com.bluepad.hid.CompositeReports
 import com.bluepad.hid.HidInputState
@@ -51,6 +52,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
     private var reportSequence = 0L
     // Diagnostic builds also require an explicit per-tag DEBUG opt-in.
     private inline fun trace(message: () -> String) = Diagnostics.debug(TAG,message)
+    private inline fun lifecycle(message: () -> String) { if (BuildConfig.DEBUG) Log.i("BluePadConnection", "uptime=${SystemClock.uptimeMillis()} session=$generation ${message()}") }
     private fun publish() { state = state.copy(modifiers = keyboard.modifiers,inputToken = inputSession.token,hostAddress = host?.address,lastHostAvailable = state.devices.any { it.address == preferences.getString("last_host",null) }); trace { "state session=$generation active=$active registered=${state.registered} connected=${state.connected} busy=${state.busy} profile=${profile != null} host=${host != null} hid=${state.hid} connection=${state.connection}" }; val snapshot = state; main.post { update(snapshot) } }
     private fun work(block: () -> Unit) { synchronized(worker) { if (worker.isShutdown) return; worker.execute {
         try { block() } catch (e: SecurityException) { Log.e(TAG, "Bluetooth permission failure; closing session", e); close(); state = State(bluetooth = "Permission required", error = "Grant Nearby devices permission."); publish() }
@@ -61,6 +63,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         foreground = true; startInternal()
     }
     private fun startInternal() {
+        lifecycle { "start active=$active foreground=$foreground permission=${BluetoothPermissions.granted(app)}" }
         trace { "start active=$active" }
         if (active) return
         active = true
@@ -77,37 +80,44 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
                 synchronized(worker) {
                     if (worker.isShutdown) { safely { adapter.closeProfileProxy(type, proxy) }; return }
                     work {
+                        lifecycle { "profile_acquired callbackSession=$session active=$active type=$type" }
                         trace { "profile acquired callbackSession=$session currentSession=$generation active=$active" }
                         if (!active || session != generation) { adapter.closeProfileProxy(type, proxy); return@work }
                         cancelTimeout()
                         profile = proxy as BluetoothHidDevice
                         state = state.copy(hid = "Registering")
                         if (Diagnostics.isEnabled(TAG)) trace { "register descriptor=${CompositeReports.descriptor.joinToString(" ") { "%02x".format(it.toInt() and 255) }} mouseId=2 mouseBytes=4 keyboardId=1 keyboardBytes=8" }
+                        lifecycle { "register_request" }
                         val accepted = profile!!.registerApp(BluetoothHidDeviceAppSdpSettings("BluePad", "Mouse and US keyboard", "BluePad",
                             BluetoothHidDevice.SUBCLASS1_COMBO, CompositeReports.descriptor), null, null, java.util.concurrent.Executor { task -> work { task.run() } }, callback(session))
+                        lifecycle { "register_result accepted=$accepted descriptorBytes=${CompositeReports.descriptor.size} subclass=${BluetoothHidDevice.SUBCLASS1_COMBO} mouseId=2 mouseBytes=4 keyboardId=1 keyboardBytes=8" }
                         trace { "registerApp accepted=$accepted; waiting for registration callback" }
-                        if (!accepted) { close(); state = state.copy(hid = "Registration rejected", error = "Another HID app or device policy may prevent registration."); reconnect.failed(); scheduleRetry() }
+                        if (!accepted) { close(reason = "register rejected"); state = state.copy(hid = "Registration rejected", error = "Another HID app or device policy may prevent registration."); reconnect.failed(); scheduleRetry() }
                         else armTimeout("HID registration timed out",HidDeadline.Operation.REGISTRATION)
                         publish()
                     }
                 }
             }
             override fun onServiceDisconnected(type: Int) = work {
-                if (session == generation) { close(); state = state.copy(hid = "HID service lost", error = "HID service lost."); reconnect.failed(); scheduleRetry(); publish() }
+                lifecycle { "profile_lost callbackSession=$session type=$type" }
+                if (session == generation) { close(reason = "profile service lost"); state = state.copy(hid = "HID service lost", error = "HID service lost."); reconnect.failed(); scheduleRetry(); publish() }
             }
         }
-        if (!adapter.getProfileProxy(app, listener, BluetoothProfile.HID_DEVICE)) {
-            close(); state = state.copy(hid = "HID profile unavailable", error = "This device does not expose a usable HID Device profile."); reconnect.failed(); scheduleRetry()
+        val profileAccepted = adapter.getProfileProxy(app, listener, BluetoothProfile.HID_DEVICE)
+        lifecycle { "profile_request accepted=$profileAccepted" }
+        if (!profileAccepted) {
+            close(reason = "profile request rejected"); state = state.copy(hid = "HID profile unavailable", error = "This device does not expose a usable HID Device profile."); reconnect.failed(); scheduleRetry()
         } else armTimeout("HID profile unavailable or service timed out",HidDeadline.Operation.PROFILE)
         publish()
     }
     private fun callback(session: Int) = object : BluetoothHidDevice.Callback() {
         override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
+            lifecycle { "registration_callback callbackSession=$session active=$active registered=$registered pluggedHost=${pluggedDevice?.address}" }
             trace { "app callbackSession=$session currentSession=$generation active=$active registered=$registered pluggedHost=${pluggedDevice != null}" }
             if (session != generation || !active) return
             cancelTimeout(HidDeadline.Operation.REGISTRATION)
             state = state.copy(registered = registered, hid = if (registered) "Registered" else "Unregistered")
-            if (!registered) { close(); state = state.copy(error = "Registration lost. Keep BluePad visible; tap Refresh to retry.") }
+            if (!registered) { close(reason = "registration lost"); state = state.copy(error = "Registration lost. Keep BluePad visible; tap Refresh to retry.") }
             if (registered) {
                 if (reconnect.connecting && host == null) connectLast()
                 else scheduleRetry(immediate = true)
@@ -115,11 +125,15 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
             publish()
         }
         override fun onConnectionStateChanged(device: BluetoothDevice, connectionState: Int) {
+            lifecycle { "connection_callback callbackSession=$session active=$active device=${device.address} state=$connectionState expectedHost=${host?.address} registered=${state.registered} disconnecting=$disconnecting" }
             trace { "connection callbackSession=$session currentSession=$generation active=$active state=$connectionState matchingHost=${host == null || host == device}" }
             if (session != generation || !active) return
             val bonded = device in adapter!!.bondedDevices
+            val observedState = profile?.getConnectionState(device) ?: BluetoothProfile.STATE_DISCONNECTED
+            lifecycle { "connection_observed state=$observedState bonded=$bonded paused=${reconnect.paused}" }
             if (!ConnectionCallbacks.accepts(session,generation,active,host?.address,device.address,
-                    connectionState,profile?.getConnectionState(device) ?: BluetoothProfile.STATE_DISCONNECTED,reconnect.paused,bonded)) {
+                    connectionState,observedState,reconnect.paused,bonded)) {
+                lifecycle { "connection_callback_ignored policy_mismatch" }
                 if (connectionState != BluetoothProfile.STATE_DISCONNECTED && (host != null && host != device || reconnect.paused || !bonded)) profile?.disconnect(device)
                 return
             }
@@ -137,6 +151,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
             publish()
         }
         override fun onGetReport(device: BluetoothDevice, type: Byte, id: Byte, bufferSize: Int) {
+            lifecycle { "get_report callbackSession=$session device=${device.address} type=$type id=$id bufferSize=$bufferSize eligible=${session == generation && active && host == device}" }
             trace { "getReport callbackSession=$session type=$type id=$id bufferSize=$bufferSize" }
             if (session != generation || !active || host != device) return
             val report = when (type) {
@@ -144,31 +159,35 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
                 BluetoothHidDevice.REPORT_TYPE_OUTPUT -> if (id.toInt() == CompositeReports.KEYBOARD_ID) byteArrayOf(keyboardLeds.toByte()) else null
                 else -> null
             }
-            if (report == null) profile?.reportError(device,BluetoothHidDevice.ERROR_RSP_INVALID_RPT_ID)
-            else if (bufferSize != 0 && bufferSize < report.size) profile?.reportError(device,BluetoothHidDevice.ERROR_RSP_INVALID_PARAM)
-            else profile?.replyReport(device,type,id,report)
+            if (report == null) { val accepted = profile?.reportError(device,BluetoothHidDevice.ERROR_RSP_INVALID_RPT_ID); lifecycle { "get_report_error code=INVALID_RPT_ID accepted=$accepted" } }
+            else if (bufferSize != 0 && bufferSize < report.size) { val accepted = profile?.reportError(device,BluetoothHidDevice.ERROR_RSP_INVALID_PARAM); lifecycle { "get_report_error code=INVALID_PARAM accepted=$accepted" } }
+            else { val accepted = profile?.replyReport(device,type,id,report); lifecycle { "get_report_reply bytes=${report.size} accepted=$accepted" } }
         }
         override fun onSetProtocol(device: BluetoothDevice, protocol: Byte) {
+            lifecycle { "set_protocol callbackSession=$session device=${device.address} protocol=$protocol eligible=${session == generation && active && host == device}" }
             if (session != generation || !active || host != device) return
             bootProtocol = protocol == BluetoothHidDevice.PROTOCOL_BOOT_MODE
             trace { "protocol=$protocol boot=$bootProtocol; wheel available only in report mode" }
         }
         override fun onSetReport(device: BluetoothDevice, type: Byte, id: Byte, data: ByteArray) {
+            lifecycle { "set_report callbackSession=$session device=${device.address} type=$type id=$id bytes=${data.size} eligible=${session == generation && active && host == device}" }
             if (session != generation || !active || host != device) return
             val leds = if (type == BluetoothHidDevice.REPORT_TYPE_OUTPUT) CompositeReports.leds(id.toInt(),data) else null
-            if (leds != null) { keyboardLeds = leds; profile?.reportError(device,BluetoothHidDevice.ERROR_RSP_SUCCESS) }
-            else profile?.reportError(device,BluetoothHidDevice.ERROR_RSP_INVALID_PARAM)
+            if (leds != null) { keyboardLeds = leds; val accepted = profile?.reportError(device,BluetoothHidDevice.ERROR_RSP_SUCCESS); lifecycle { "set_report_response code=SUCCESS accepted=$accepted" } }
+            else { val accepted = profile?.reportError(device,BluetoothHidDevice.ERROR_RSP_INVALID_PARAM); lifecycle { "set_report_response code=INVALID_PARAM accepted=$accepted" } }
         }
         override fun onInterruptData(device: BluetoothDevice, reportId: Byte, data: ByteArray) {
             if (session != generation || !active || host != device) return
             CompositeReports.leds(reportId.toInt(),data)?.let { keyboardLeds = it }
         }
         override fun onVirtualCableUnplug(device: BluetoothDevice) {
+            lifecycle { "virtual_cable_unplug callbackSession=$session device=${device.address}" }
             trace { "virtual cable unplug callbackSession=$session currentSession=$generation" }
             if (session == generation && active && host == device) { cancelTimeout(); reconnect.disconnect(); preferences.edit().putBoolean("paused",true).apply(); cancelRetry(); inputSession.invalidate(); host = null; bootProtocol = false; inputs.releaseAll(bootProtocol); keyboardLeds = 0; state = state.copy(connected = false, busy = false, connection = "Disconnected"); publish() }
         }
     }
     fun connect(device: BluetoothDevice) = work {
+        lifecycle { "manual_connect device=${device.address} registered=${state.registered} connected=${state.connected} busy=${state.busy} host=${host?.address}" }
         if (!state.registered || state.connected || state.busy || host != null || device !in adapter!!.bondedDevices) return@work
         cancelRetry(); reconnect.manual(); retryAddress = device.address; preferences.edit().putBoolean("paused",false).apply()
         connectInternal(device,false)
@@ -179,7 +198,9 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         state = state.copy(connected = false,busy = true,connection = if (automatic) "Reconnecting" else "Connecting",error = "")
         val current = profile?.getConnectionState(device)
         val alreadyRequested = current == BluetoothProfile.STATE_CONNECTING || current == BluetoothProfile.STATE_CONNECTED
-        if (alreadyRequested || profile?.connect(device) == true) armTimeout("Connection timed out",HidDeadline.Operation.CONNECTION)
+        val acceptedConnect = alreadyRequested || profile?.connect(device) == true
+        lifecycle { "connect_result device=${device.address} automatic=$automatic profileState=$current alreadyRequested=$alreadyRequested accepted=$acceptedConnect attempts=${reconnect.attempts}" }
+        if (acceptedConnect) armTimeout("Connection timed out",HidDeadline.Operation.CONNECTION)
         else { host = null; reconnect.failed(); state = state.copy(busy = false,connection = "Connection failed",error = "Connection request rejected"); scheduleRetry() }
         publish()
     }
@@ -194,7 +215,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         reconnect.disconnect(); preferences.edit().putBoolean("paused",true).apply(); cancelRetry()
         inputSession.invalidate(); releaseInternal()
         if (host != null && !disconnecting) {
-            disconnecting = true; host?.let { profile?.disconnect(it) }
+            disconnecting = true; host?.let { val accepted = profile?.disconnect(it); lifecycle { "manual_disconnect device=${it.address} accepted=$accepted" } }
             state = state.copy(connected = false,busy = true,connection = "Disconnected")
             armTimeout("Disconnect timed out",HidDeadline.Operation.DISCONNECTION)
         } else state = state.copy(connection = "Disconnected",busy = false)
@@ -227,6 +248,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
                 state = state.copy(busy = false,connection = "Connection failed",error = "Automatic retries exhausted. Use Reconnect last host.")
             return
         }
+        lifecycle { "retry_scheduled delayMs=$delay attempts=${reconnect.attempts} device=${retryDevice()?.address}" }
         val ticket = ++retryTicket
         state = state.copy(busy = false,connection = "Reconnecting")
         retry = Runnable { work {
@@ -311,6 +333,7 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
     private fun send(report: ByteArray) = transmit(CompositeReports.MOUSE_ID,MouseReports.forProtocol(report,bootProtocol))
     private fun sendKeyboard(report: ByteArray) { if (state.connected) transmit(CompositeReports.KEYBOARD_ID,report) }
     private fun transmit(id: Int, payload: ByteArray) {
+        if (!state.connected || disconnecting) return
         val sequence = ++reportSequence
         val device = host ?: return
         // Never log keyboard contents; keep transport metadata for debugging.
@@ -323,13 +346,26 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         trace { "send sequence=$sequence accepted=$accepted sendMs=${SystemClock.elapsedRealtime() - sendStarted} (request acceptance, not host delivery)" }
         if (accepted != true) {
             Log.w(TAG,"Report rejected; releasing mouse and keyboard before disconnect")
-            inputSession.invalidate(); inputs.releaseAll(bootProtocol)
-            safely { profile?.sendReport(device,CompositeReports.MOUSE_ID,MouseReports.forProtocol(MouseReports.encode(false),bootProtocol)) }
-            safely { profile?.sendReport(device,CompositeReports.KEYBOARD_ID,keyboard.report()) }
-            disconnecting = true
-            safely { profile?.disconnect(device) }
-            state = state.copy(connected = false,busy = true,connection = "Connection failed",error = "HID report rejected; reconnect.")
-            armTimeout("Report failure recovery timed out",HidDeadline.Operation.RECOVERY); publish()
+            ReportRejectionRecovery.run(disconnecting,
+                prepare = {
+                    inputSession.invalidate(); inputs.releaseAll(bootProtocol); disconnecting = true
+                    state = state.copy(connected = false,busy = true,connection = "Connection failed",error = "HID report rejected; recovering connection.")
+                    armTimeout("Report failure recovery timed out",HidDeadline.Operation.RECOVERY); publish()
+                },
+                release = {
+                    safely { profile?.sendReport(device,CompositeReports.MOUSE_ID,MouseReports.forProtocol(MouseReports.encode(false),bootProtocol)) }
+                    safely { profile?.sendReport(device,CompositeReports.KEYBOARD_ID,keyboard.report()) }
+                },
+                disconnect = {
+                    var acceptedDisconnect = false
+                    safely { acceptedDisconnect = profile?.disconnect(device) == true; lifecycle { "recovery_disconnect accepted=$acceptedDisconnect" } }
+                    acceptedDisconnect
+                },
+                rejected = {
+                    close(disconnectHost = false, reason = "report rejection and disconnect rejected"); reconnect.failed()
+                    state = state.copy(hid = "Inactive",connection = "Connection failed",error = "HID report and disconnect request rejected; recovering connection.")
+                    scheduleRetry(); publish()
+                })
         }
     }
     private fun cancelTimeout(expected: HidDeadline.Operation? = null) {
@@ -339,18 +375,21 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
     private fun armTimeout(message: String, operation: HidDeadline.Operation) {
         if (!deadline.begin(operation)) return
         timeout?.let { main.removeCallbacks(it) }
+        lifecycle { "deadline_armed operation=$operation timeoutMs=12000 reason=$message" }
         trace { "deadline armed operation=$operation timeoutMs=12000" }
         val session = generation
         val revision = deadline.revision
         timeout = Runnable { work { if (session == generation && active && deadline.revision == revision && deadline.operation == operation) {
-            close(); reconnect.failed(); state = state.copy(hid = "Inactive",connection = "Connection failed",error = "$message. Check the host HID service and bond state.")
+            lifecycle { "deadline_expired operation=$operation revision=$revision host=${host?.address} connected=${state.connected} busy=${state.busy}" }
+            close(reason = message); reconnect.failed(); state = state.copy(hid = "Inactive",connection = "Connection failed",error = "$message. Check the host HID service and bond state.")
             if (operation != HidDeadline.Operation.DISCONNECTION) scheduleRetry()
             publish()
         } } }
         main.postDelayed(timeout!!, 12000)
     }
-    fun stop() { inputSession.invalidate(); work { trace { "stop" }; foreground = false; cancelRetry(); reconnect.cancel(); close(); state = state.copy(bluetooth = when { !BluetoothPermissions.granted(app) -> "Permission required"; adapter == null -> "Unavailable"; !adapter.isEnabled -> "Disabled"; else -> "Enabled" },hid = "Inactive", error = ""); publish() } }
-    private fun close() {
+    fun stop() { inputSession.invalidate(); work { trace { "stop" }; foreground = false; cancelRetry(); reconnect.cancel(); close(reason = "stop/background/Bluetooth off"); state = state.copy(bluetooth = when { !BluetoothPermissions.granted(app) -> "Permission required"; adapter == null -> "Unavailable"; !adapter.isEnabled -> "Disabled"; else -> "Enabled" },hid = "Inactive", error = ""); publish() } }
+    private fun close(disconnectHost: Boolean = true, reason: String = "cleanup") {
+        lifecycle { "profile_close reason=$reason host=${host?.address} registered=${state.registered} connected=${state.connected} operation=${deadline.operation}" }
         trace { "close session=$generation connected=${state.connected} pressed=${buttons.pressed}" }
         cancelRetry(); inputSession.invalidate(); active = false; generation++; cancelTimeout(); val neutral = inputs.releaseAll(bootProtocol); keyboardLeds = 0
         val old = profile; val device = host
@@ -359,10 +398,10 @@ class HidManager(context: Context, private val update: (State) -> Unit) {
         if (old != null) {
             if (device != null) {
                 neutral.forEach { report -> safely { old.sendReport(device,report.id,report.payload) } }
-                safely { old.disconnect(device) }
+                if (disconnectHost) safely { val accepted = old.disconnect(device); lifecycle { "cleanup_disconnect accepted=$accepted device=${device.address} reason=$reason" } }
             }
-            safely { old.unregisterApp() }
-            safely { adapter?.closeProfileProxy(BluetoothProfile.HID_DEVICE, old) }
+            safely { val accepted = old.unregisterApp(); lifecycle { "unregister_result accepted=$accepted reason=$reason" } }
+            safely { adapter?.closeProfileProxy(BluetoothProfile.HID_DEVICE, old); lifecycle { "profile_proxy_closed reason=$reason" } }
         }
         bootProtocol = false
     }

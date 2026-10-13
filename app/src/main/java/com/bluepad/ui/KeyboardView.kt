@@ -164,23 +164,25 @@ class KeyboardView @JvmOverloads constructor(context: Context,
             "Shift" to KeyboardReports.SHIFT,"Super" to KeyboardReports.SUPER)) {
             val toggle = ToggleButton(context).apply {
                 textOn = "$label ●"; textOff = label; isChecked = false
-                minWidth = 0; minimumWidth = 0; setPadding(0,0,0,0); isFocusable = false
+                minWidth = dp(64); minimumWidth = dp(64); setPadding(dp(8),0,dp(8),0); isFocusable = false
                 setOnCheckedChangeListener { _,checked -> if (!rendering) modifier(bit,checked) }
             }
             modifiers[bit] = toggle; controls.add(toggle)
-            modifierRow.addView(toggle,LinearLayout.LayoutParams(dp(64),-2).apply { marginEnd = dp(6) })
+            modifierRow.addView(toggle,LinearLayout.LayoutParams(-2,-2).apply { marginEnd = dp(6) })
         }
         for ((label,usage) in UsKeyboard.special) {
             val button = Button(context).apply {
-                text = label; isAllCaps = false; minWidth = 0; minimumWidth = 0; setPadding(0,0,0,0)
+                text = label; isAllCaps = false; minWidth = dp(64); minimumWidth = dp(64); setPadding(dp(8),0,dp(8),0)
+                KeyboardControlLabels.special(usage)?.let { contentDescription = context.getString(it) }
                 textSize = 13f; isFocusable = false
                 setOnClickListener { bridge.finish(); tap(UsKeyboard.Stroke(usage)) }
             }
             controls.add(button)
-            modifierRow.addView(button,LinearLayout.LayoutParams(dp(64),-2).apply { marginEnd = dp(6) })
+            modifierRow.addView(button,LinearLayout.LayoutParams(-2,-2).apply { marginEnd = dp(6) })
         }
         val release = Button(context).apply { isFocusable = false; setText(R.string.release_keys); setOnClickListener { resetInput(); clear() } }
-        controls.add(release); modifierRow.addView(release,LinearLayout.LayoutParams(dp(132),-2).apply { marginEnd = dp(4) })
+        release.minWidth = dp(132); release.minimumWidth = dp(132)
+        controls.add(release); modifierRow.addView(release,LinearLayout.LayoutParams(-2,-2).apply { marginEnd = dp(4) })
     }
     private fun activateIme(version: Int) {
         val ready = focusAllowed && visibility == android.view.View.VISIBLE && isAttachedToWindow && hasWindowFocus() && field.width > 0 && field.height > 0

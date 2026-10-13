@@ -3,7 +3,9 @@ package com.bluepad.ui
 import com.bluepad.hid.UsKeyboard
 
 /** Append-oriented US HID proof of concept; composition stays local until committed. */
-class ImeTextBridge(private val tap: (UsKeyboard.Stroke) -> Unit, private val message: (String) -> Unit) {
+class ImeTextBridge internal constructor(private val tap: (UsKeyboard.Stroke) -> Unit,
+    private val message: (String) -> Unit, private val mapCharacter: (Char) -> UsKeyboard.Stroke?) {
+    constructor(tap: (UsKeyboard.Stroke) -> Unit, message: (String) -> Unit) : this(tap,message,UsKeyboard::character)
     var enabled = false
     private var blocked = false
     private var draft: String? = null
@@ -13,8 +15,13 @@ class ImeTextBridge(private val tap: (UsKeyboard.Stroke) -> Unit, private val me
         draft = null
         if (!enabled) { message("Not connected; input was not sent."); return false }
         if (blocked) { message("Reset input with Release all keys after unsupported text."); return false }
-        val strokes = text.map { UsKeyboard.character(it) }
-        if (text.length > 512 || strokes.any { it == null }) {
+        // Reject before constructing a list proportional to an unsupported commit's length.
+        if (text.length > 512) {
+            blocked = true
+            message("Only US-mapped text is supported; this commit was not sent."); return false
+        }
+        val strokes = text.map { mapCharacter(it) }
+        if (strokes.any { it == null }) {
             blocked = true
             message("Only US-mapped text is supported; this commit was not sent."); return false
         }

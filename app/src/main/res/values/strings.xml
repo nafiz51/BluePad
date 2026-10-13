@@ -31,4 +31,12 @@
 <string name="ime_ready">Ready · US HID input. Swipe the key row for more controls.</string>
 <string name="switch_light">Switch to Light theme</string>
 <string name="switch_dark">Switch to Midnight Blue theme</string>
+<string name="credits">Credits</string>
+<string name="credits_message">Made by Nafiz51</string>
+<string name="key_backspace">Backspace</string>
+<string name="key_escape">Escape</string>
+<string name="key_left">Left arrow</string>
+<string name="key_up">Up arrow</string>
+<string name="key_right">Right arrow</string>
+<string name="key_down">Down arrow</string>
 </resources>

@@ -1,66 +1,93 @@
-# BluePad — Android Bluetooth mouse
+# BluePad
 
-Native offline Android Bluetooth Classic HID mouse prototype. Android 9/API 28 minimum; compile/target API 36. No Internet permission, runtime libraries, root, or PC companion software. Single-finger pointer movement, adjustable sensitivity, two-finger vertical scrolling, a locked one-finger right-edge scroll strip and left click are supported. V4 adds main-area tap-to-left-click, two-finger tap-to-right-click and double-tap-and-drag (final hardware tests passed on Vivo/Ubuntu). V5A adds composite mouse/keyboard HID support and native default-Android-IME input with US HID mapping, hardware-verified by the user on Vivo/Ubuntu. Universal Unicode support, horizontal scrolling, other gestures and background operation remain outside the current scope.
+BluePad turns an Android phone into an offline Bluetooth Classic HID touchpad and keyboard. **Made by Nafiz51** — Settings → Credits displays the developer credit.
 
-## Build
+Version **1.0.0**, Android version code **2**. Android 9/API 28 minimum; compile/target API 36. No Internet permission, companion desktop application, root, or runtime library dependencies.
 
-Install JDK 17 or 21, Android SDK platform 36 and build-tools 35.0.0. Set `sdk.dir` in untracked `local.properties`, or `ANDROID_HOME`. Run:
+## Supported configuration
+
+The user has hardware-verified Vivo V2027 → Ubuntu, including cursor movement, keyboard, gestures, reconnection, both themes, Credits, and finalization milestones 1–4. This is the supported tested combination; other Android manufacturers and Linux configurations need independent testing.
+
+**Windows 11 HID connection remains unresolved and compatibility is deferred.** Successful pairing or file transfer does not prove HID support. macOS is not hardware-verified. Do not advertise general cross-platform compatibility.
+
+## Features and defaults
+
+- Single-finger movement; tap-to-left-click; two-finger right-click; moderate double-click; double-tap-and-hold dragging.
+- Dedicated left/right buttons with holds, two-finger vertical scrolling and a locked 12% right-edge scroll strip.
+- Pinch zoom: Standard uses Ctrl+wheel; advanced macOS compatibility uses Command+plus/minus. Both are application-defined shortcuts, not native multitouch HID.
+- Default Android keyboard/IME, modifiers and special-key controls; keyboard remains above the IME with the touchpad still usable.
+- Midnight Blue and Soft Blue, toolbar theme toggle, System/Light/Dark settings, IME-first Back navigation and Credits.
+- Foreground-only, bonded-host reconnection with bounded retries and input-session fencing.
+
+Fresh defaults: Dark appearance, cursor sensitivity 3.5× (range 0.5×–8×), scroll sensitivity 2.5× (range 0.5×–3×), Natural Scrolling ON and automatic reconnect ON. Saved valid preferences survive updates. Zoom Compatibility defaults to Standard.
+
+## Installation and updates
+
+The current final verification artifact is the **debug-signed APK**, not a production-key-signed distribution:
 
 ```sh
-./gradlew testDebugUnitTest lintDebug assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The wrapper resolves Gradle 8.13; pinned AGP 8.13.2 and Kotlin 2.2.21 resolve on the first build. Build dependency downloads require networking; the installed app operates offline. Debug APK: `app/build/outputs/apk/debug/app-debug.apk`. Temporary SDK/Gradle installations used for milestone verification live under `/tmp` and may be deleted by the OS; configure a persistent SDK for subsequent development.
+Enable USB debugging and authorize the computer first. `-r` updates the same package while retaining its data. Do not uninstall, clear app storage or delete pairing data during an update. A matching signing identity is required; a certificate mismatch must be resolved through the existing key, not by recommending data-erasing installation steps. Reopen BluePad after the update and reconnect if necessary.
 
-## Structure
+APK: `app/build/outputs/apk/debug/app-debug.apk`. Installation from a copied APK requires allowing installation from that source on Android.
 
-- `MainActivity`: native UI, activity visibility, Bluetooth state/bond broadcasts and permission result handling.
-- `bluetooth/BluetoothPermissions`: Android 12+ Nearby devices (`BLUETOOTH_CONNECT`); legacy Bluetooth permissions end at API 30. No scanning, discoverability request or location permission.
-- `bluetooth/HidManager`: serial worker, HID profile/registration callbacks, paired devices, one host, explicit connection/disconnection, 12-second failure timeouts, cleanup and stale-session guards.
-- `hid/MouseReports`: relative mouse descriptor and pure four-byte report/button/wheel encoding with three-byte boot-mode adaptation; JUnit tests.
-- `ui/TouchpadView`: density-independent pointer/scroll input with frame batching and fractional accumulation; `TouchpadMotion` holds testable gesture math. `ui/LeftClickButton`: held touch and complete accessibility clicks.
+## Bluetooth pairing and connection
 
-HID uses three button bits (only left is used), five padding bits, signed relative X/Y/wheel in [-127,127], and composite mouse report ID 2. Report protocol uses four bytes; boot protocol uses three-byte buttons/X/Y with the Bluetooth boot mouse ID 2 and disables scrolling. The composite keyboard uses report ID 1 and an eight-byte input payload. Registration success is confirmed by callback and does not imply connection. The Android API permits one registered HID app and unregisters apps that leave the foreground. BluePad releases buttons, disconnects, unregisters and closes the profile on activity stop. Returning requires registration and reconnecting. Rotation also ends the current session.
+1. Enable Bluetooth on the phone and Ubuntu. Pair through their system Bluetooth settings and confirm the displayed pairing code. BluePad lists bonded devices; it does not scan or pair hosts itself.
+2. Open BluePad and keep it foregrounded. On Android 12+, grant Nearby devices permission using the connection controls if needed.
+3. Open the toolbar Bluetooth control. Wait for HID registration, select Ubuntu and tap Connect. Only the actual Connected callback establishes an input session.
+4. Automatic reconnect uses the last successfully connected bonded host. Explicit Disconnect pauses it; manual Connect/Reconnect or re-enabling automatic reconnect resumes it.
+5. If registration or connection fails, inspect the displayed error and use the existing Refresh/Connect controls. Do not routinely delete bonds. Previous descriptor changes sometimes required pairing/service refresh; no descriptor change is included in finalization.
 
-## Physical-device verification
+Backgrounding, locking and rotation can end the foreground HID session; reopening uses the existing registration/recovery path. No background connection guarantee is made. Neutral releases are best-effort when radio/transport is available; software also clears local state and prevents stale queued input from crossing sessions.
 
-The user reports successful connection, cursor movement, sensitivity, left click and scrolling on Vivo/Ubuntu after refreshing Bluetooth pairing/service recognition. Other combinations remain unverified; a build or unit test does not prove hardware compatibility. HID Device exposure, Bluetooth firmware, host behavior and policy can prevent registration or connection; rejection or timeout is shown in the UI. A timeout cannot distinguish every unsupported implementation from a temporarily unavailable service.
+## Keyboard limitations
 
-1. Install the debug APK on a real Android 9+ phone. Test an Android 12+ device as well for runtime permission behavior.
-2. Enable Bluetooth on phone and computer. Pair using Android/computer Bluetooth settings and confirm the same pairing code. Keep BluePad visible during HID use. If pairing happened before HID registration, a host may require removing the bond and pairing again while BluePad is registered; switching to Settings stops the foreground session, so return and refresh/reconnect afterward.
-3. Open BluePad; grant Nearby devices when prompted through the permission button. Confirm Bluetooth Enabled and HID Registered. Refresh paired devices, select the computer, tap Connect, and wait for Connected.
-4. Drag the touchpad: check cursor direction and motion. Hold/release Left click and check normal clicking and dragging. Cancel a click by interrupting the touch sequence; verify the computer sees release.
-5. Test Disconnect, Home, screen lock, rotation, Bluetooth disable, host disconnect, permission denial/revocation and reopening. Confirm no stuck button or unintended connection survives; reconnect deliberately.
-6. Test missing/unsupported Bluetooth hardware/profile and conflicting HID apps. Confirm clear failure and retry behavior.
-7. Repeat independently on Windows, Linux and macOS; record phone model, Android build, host OS/version, registration, pairing, connection, movement, click/release and recovery results. Do not infer one host's result applies to another.
-8. Enable airplane mode with Bluetooth manually enabled, disable Wi-Fi, and repeat motion/click to demonstrate offline operation.
+The IME generates **US physical HID key usages**; the computer's active keyboard layout determines resulting characters. Supported commits include US-mapped letters, numbers, punctuation, space, Enter and Tab. Special-key controls include Backspace, Escape, Delete and arrows, with Ctrl/Alt/Shift/Super modifiers.
 
-Bluetooth send success means the request was accepted, not proof that the host received it. Neutral release is attempted before disconnect; radio loss or OS process termination cannot guarantee delivery. Software clears local button state and neutralizes each new connection. Report failures stop input and trigger disconnect/timeout cleanup.
+- Bangla, emoji and arbitrary Unicode are not supported by this mapping, regardless of which Android keyboard is installed.
+- Composition remains local until committed; unsupported correction/replacement and local clipboard operations are restricted. Use host-side keyboard shortcuts for supported copy/paste operations.
+- Final commits above 512 UTF-16 code units or containing unsupported characters are rejected atomically. Oversized commits are checked before key-list construction. Use Release all keys to reset blocked input.
+- Editor history and an active composing draft can grow in unusually long continuous sessions. Closing/reopening the keyboard or Release all keys clears local text through the existing reset path. No history trimming or composition cap is imposed.
+- Natural very-fast double-taps may fail on Ubuntu; moderate double-clicks and dragging are verified. Scrolling is not equivalent to a laptop precision touchpad. Zoom is suppressed while user keys/modifiers or mouse buttons are held.
 
-## References
+## Build and verification
 
-- [BluetoothHidDevice API and foreground limitations](https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice)
-- [Android Bluetooth permissions](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions)
-- [AGP 8.13 compatibility](https://developer.android.com/build/releases/agp-8-13-0-release-notes)
+Use JDK 17 or 21, Android SDK platform 36 and build-tools 35.0.0. Configure a persistent SDK using untracked `local.properties` or `ANDROID_HOME`. Gradle 8.13, AGP 8.13.2 and Kotlin 2.2.21 are pinned. Temporary verification toolchains under `/tmp` are not a permanent setup.
 
-The user has confirmed Bluetooth connection, cursor movement, adjustable sensitivity, left click and two-finger scrolling on a real Vivo phone with Ubuntu. Scrolling required refreshing Bluetooth pairing and HID service recognition; see [touchpad update notes](docs/TOUCHPAD_UPDATE.md) for protocol changes, verification and recovery. Further features require approval.
+Run the gates sequentially with conservative memory:
 
-The user confirmed V3 right-edge one-finger scrolling, normal cursor movement, two-finger scrolling and existing touchpad features on Vivo/Ubuntu, with no additional issues observed; see [scroll strip notes](docs/SCROLL_STRIP.md).
+```sh
+./gradlew --no-daemon --max-workers=1 -Dorg.gradle.jvmargs='-Xmx768m -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process testDebugUnitTest
+./gradlew --no-daemon --max-workers=1 -Dorg.gradle.jvmargs='-Xmx768m -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process lintDebug
+./gradlew --no-daemon --max-workers=1 -Dorg.gradle.jvmargs='-Xmx768m -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process assembleDebug
+apksigner verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
+```
 
-V4 implementation and validation notes: [advanced gestures](docs/V4_GESTURES.md). Final V4 hardware testing passed on Vivo/Ubuntu, including the [scrolling refinement](docs/V4_SCROLL_OPTIMIZATION.md). Scrolling remains less smooth than a laptop precision touchpad; this is an accepted V4 limitation.
+Normal builds disable verbose touch/HID diagnostics even if Android DEBUG properties remain enabled. Debug APKs contain low-frequency connection diagnostics; release builds omit these. Diagnostic-only builds can explicitly opt in with `-PbluepadDiagnostics=true`; do not use them to judge normal cursor performance. Logs do not contain typed keyboard text. Debug lifecycle logs can identify host addresses.
 
-V5A is hardware-verified by the user and recorded by the local annotated tag `bluetooth-mouse-keyboard-working-v5a`; see [keyboard foundation](docs/V5A_KEYBOARD_FOUNDATION.md) and [connection audit](docs/V5A_CONNECTION_AUDIT.md). The audit preserves earlier failure evidence without claiming a proven host-side root cause.
+## Signing and release boundary
 
-Pointer sensitivity now ranges from 0.5× to 8× in 0.1× steps (V9 default 3.5×), preserving existing saved values; scrolling speed is independent. The current V5A version has been hardware-verified by the user.
+The existing debug certificate supports updates to the current verified installation. Preserve the existing keystore securely outside Git; regenerating the usual debug keystore produces a different identity. The finalization process does not generate keys, configure Google Play or configure production signing.
 
-V5B replaces tabs with a touchpad-first screen and a keyboard toolbar toggle. The touchpad remains active above the default Android IME; the Bluetooth status control opens device connection controls, while settings contains sensitivity. Compact Left Click/Right Click buttons support holds below the pad. See [adaptive layout and hardware checks](docs/V5B_ADAPTIVE_LAYOUT.md). V5B passed real-device testing as confirmed by the user and is recorded by the local annotated tag `bluetooth-touchpad-keyboard-working-v5b`; the existing US HID text limitations remain.
+A broadly distributed release should use an explicitly approved durable signing identity and a tested migration/distribution plan. Switching to a different certificate is not an in-place update to the current installation. Do not ship private keys or passwords in source control. Future updates must preserve the application ID/certificate and increase version code above 2.
 
-V6 adds locked pinch/scroll classification and a historical Host OS setting (replaced in V8 by Zoom Compatibility): Ctrl+wheel zoom for Windows/Linux, Command+Plus/Minus for macOS. Zoom is skipped while user keys/modifiers or mouse buttons are held. V6 is accepted as a stable local checkpoint at `bluetooth-touchpad-keyboard-working-v6`. Natural very fast double-taps may fail on Ubuntu; moderate-speed double-taps and double-tap-and-drag work. This is an accepted V6 limitation. Windows/macOS still require independent hardware testing; see [implementation and exact hardware procedure](docs/V6_PINCH_ZOOM.md).
+## Final verification
 
-V7 adds foreground-only reconnection to a callback-confirmed bonded host, bounded retries, explicit-disconnect suppression and session-gated input cleanup. Automatic reconnection is enabled by default; Settings controls it and the connection panel offers Reconnect last host. V7 passed all 10/10 hardware checks on Vivo Android and Ubuntu, including recovery after toggling laptop Bluetooth, and is recorded by the local annotated tag `bluetooth-touchpad-keyboard-working-v7`; see [connection reliability and test procedure](docs/V7_CONNECTION_RELIABILITY.md).
+All 223 automated tests passed; lint passed with one existing AndroidGradlePluginVersion warning; debug build and APK v2 signature verification passed (one signer). Candidate APK: 2,801,502 bytes. The connected Vivo was updated in place from version code 1 to 2 with `adb install -r`; appearance, touchpad, scrolling and connection preference files had identical before/after hashes. This verifies update preservation, not a new independent cross-platform hardware test.
 
-V8 retains natural/traditional scrolling and independent 0.5×–3× scroll sensitivity. Three-finger gestures and their action/shortcut infrastructure have been removed; cursor sampling, frame scheduling and HID dispatch follow V7 again. Standard two-finger right-click remains. The general OS selector is replaced by advanced Zoom Compatibility: Standard (Ctrl+wheel) or macOS compatibility (Command+plus/minus), with migration of saved zoom behavior. Basic touchpad and keyboard functions are independent of this setting. V8 passed all four final Vivo Android/Ubuntu hardware verification checks and is recorded by the local annotated tag `bluetooth-touchpad-keyboard-working-v8`; see [scroll controls, cursor audit and hardware checks](docs/V8_ADVANCED_GESTURES.md).
+Existing signer: Android Debug, RSA 2048-bit. Certificate SHA-256: `b0fdbbac3bb5a0dfb0dd0b81cb686aefdd58ea0b106f8a14fc5f91f04248bdae`. The existing keystore is `/home/nafiz51/.android/debug.keystore`; keep a secure backup outside Git. No key was generated or replaced.
 
-V9 updates the native interface with a named-host connection toolbar, bottom keyboard toggle, subtle touchpad/button styling, organized settings, IME-first Back navigation and persistent light/dark/system appearance. Bluetooth opens connection controls; the typing panel uses spaced keys and a bounded scrollable viewport. V8 touchpad algorithms and Bluetooth behavior remain unchanged. The editor is explicitly rebound after keyboard reopening, and unchanged toggle notifications no longer reload the icon. The V9 lifecycle/performance repair passed all four hardware checks. The final Midnight Blue/Soft Blue themes and permanent quiet-logging fix passed all five final Vivo/Ubuntu hardware checks and are recorded by the local annotated tag `bluetooth-touchpad-keyboard-working-v9`; see [native UI design, measurements and checklist](docs/V9_NATIVE_UI.md).
+## Documentation
 
-V9 fresh defaults are Midnight Blue Dark, cursor 3.5×, scrolling 2.5× and Natural Scrolling ON; saved preferences remain intact. The toolbar sun/moon control changes appearance in place, with System/Light/Dark still available in Settings.
+- [Final changelog](CHANGELOG.md)
+- [HID rejection recovery](docs/V10_REPORT_REJECTION_RECOVERY.md)
+- [Keyboard memory limits](docs/KEYBOARD_SESSION_MEMORY.md)
+- [Usability/accessibility](docs/MILESTONE_3_USABILITY.md)
+- [Performance/stability and hardware plan](docs/MILESTONE_4_STABILITY.md)
+- [V9 design and quiet diagnostics](docs/V9_NATIVE_UI.md)
+- [Historical Windows diagnostic capture](docs/V10_WINDOWS_HID_DIAGNOSTICS.md)
+
+Earlier local checkpoints remain intact. Source, tests and documentation are intended for the final checkpoint; chat exports, captures, build artifacts and keys are excluded. Final commit/tag awaits explicit approval.

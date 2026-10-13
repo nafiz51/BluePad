@@ -2,6 +2,7 @@ package com.bluepad
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.AlertDialog
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.content.*
@@ -48,6 +49,7 @@ class MainActivity : Activity() {
     private lateinit var mainRoot: LinearLayout
     private lateinit var mouseButtonsRow: LinearLayout
     private lateinit var uiStyle: UiStyle
+    private var creditsDialog: AlertDialog? = null
     private lateinit var status: TextView
     private lateinit var devices: Spinner
     private lateinit var connect: Button
@@ -233,6 +235,7 @@ class MainActivity : Activity() {
         section(R.string.section_zoom)
         settings.addView(TextView(this).apply { setText(R.string.zoom_compatibility) })
         settings.addView(Spinner(this).apply {
+            contentDescription = getString(R.string.zoom_compatibility)
             adapter = ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,listOf(getString(R.string.zoom_standard),getString(R.string.zoom_macos)))
             setSelection(zoomCompatibility.ordinal)
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -260,6 +263,11 @@ class MainActivity : Activity() {
             }
         }
         settings.addView(appearancePicker)
+        settings.addView(Button(this).apply {
+            setText(R.string.credits)
+            isFocusable = false
+            setOnClickListener { showCredits() }
+        })
         pad.text = ""
         pad.background = uiStyle.card(uiStyle.palette.touchpad)
         pad.setVisualColors(uiStyle.palette.strip,uiStyle.palette.separator)
@@ -323,6 +331,25 @@ class MainActivity : Activity() {
         themeToggle.setImageResource(if(uiStyle.dark) R.drawable.ic_sun else R.drawable.ic_moon)
         themeToggle.contentDescription = getString(if(uiStyle.dark) R.string.switch_light else R.string.switch_dark)
     }
+    private fun showCredits() {
+        if (creditsDialog?.isShowing == true) return
+        val themed = android.view.ContextThemeWrapper(this,if(uiStyle.dark) R.style.BluePadDark else R.style.BluePadLight)
+        val dialog = AlertDialog.Builder(themed)
+            .setMessage(R.string.credits_message)
+            .setPositiveButton(android.R.string.ok,null)
+            .create()
+        creditsDialog = dialog
+        dialog.setOnDismissListener { if (creditsDialog === dialog) creditsDialog = null }
+        dialog.show()
+        styleCreditsDialog()
+    }
+    private fun styleCreditsDialog() {
+        creditsDialog?.takeIf { it.isShowing }?.let { dialog ->
+            dialog.window?.setBackgroundDrawable(uiStyle.card())
+            dialog.findViewById<TextView>(android.R.id.message)?.setTextColor(uiStyle.foreground)
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.let { uiStyle.applyTree(it) }
+        }
+    }
     private fun chooseAppearance(next: Appearance) {
         val preferences = getSharedPreferences("appearance",MODE_PRIVATE)
         preferences.edit().putString("theme",next.name).apply()
@@ -351,6 +378,7 @@ class MainActivity : Activity() {
         }
         themeToggle.background = uiStyle.toolbarIconBackground()
         updateThemeIcon()
+        styleCreditsDialog()
         if(appearancePicker.selectedItemPosition != next.ordinal) appearancePicker.setSelection(next.ordinal)
     }
     private fun renderPanels() {
@@ -428,7 +456,7 @@ class MainActivity : Activity() {
         hid.start()
     }
     override fun onStop() { trace { "onStop" }; if (pointerCustomized) getSharedPreferences("touchpad", MODE_PRIVATE).edit().putFloat("sensitivity", pad.sensitivity).apply(); visible = false; pad.isEnabled = false; click.isEnabled = false; rightClick.isEnabled = false; keyboardLayout.close(); imeVisible = false; updateBackHandler(); keyboardView.closeIme(); keyboardView.visibility = View.GONE; keyboardView.render(false,0); hid.stop(); unregisterReceiver(receiver); super.onStop() }
-    override fun onDestroy() { hid.destroy(); super.onDestroy() }
+    override fun onDestroy() { creditsDialog?.dismiss(); hid.destroy(); super.onDestroy() }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode,permissions,grantResults)
         if (visible) { hid.stop(); hid.start() }
