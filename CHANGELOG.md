@@ -1,13 +1,24 @@
 # Changelog
 
-## 1.2.0 — release candidate: touchpad double-click reliability
+## 1.3.0 — release candidate: connection stability and diagnostics
+
+- Reconcile eligible HID-profile CONNECTED snapshots after registration, before connecting and at timeout, recovering from missing or delayed callbacks.
+- Bound disconnection handling and preserve controlled retries, explicit-disconnect suppression and input-session fencing.
+- Add local, bounded connection diagnostics with Copy Diagnostics after failure; omit host identities and keyboard input, with no automatic uploads.
+- Expand HID descriptor, registration, Android permission-boundary and connection recovery regression coverage: 263 tests.
+- Hardware verified on Vivo → Ubuntu and Realme C30 / Android 11 → Ubuntu. Realme’s initial failure cleared after restarting Ubuntu Bluetooth; later reconnections work without repeating it. The initial cause remains unconfirmed.
+- Version 1.3.0/code 5; preserve package, signing identity, settings, descriptor/report formats, 12-second deadlines, three automatic retry attempts and 40 ms synthetic click spacing.
+- Windows HID compatibility remains unresolved; macOS and universal Android-device compatibility are not verified.
+- Prepared locally only; commit, tag and publication require separate approval.
+
+## 1.2.0 — touchpad double-click reliability
 
 - Increase synthetic touchpad click-edge spacing from 20 to 40 ms; recognized double-click edges are nominally at 0/40/80/120 ms.
 - Preserve the 120 ms first-click delivery deadline, recognition window, immediate dedicated buttons and dragging behavior. Synthetic release completes 20 ms later.
 - Add eight timing/ordering/cancellation regressions; 239 tests and all eight Vivo-to-Ubuntu hardware checks passed.
 - Version code 4; package, existing signing identity, saved preferences and HID engine remain unchanged.
 - Actual host delivery spacing under transport backlog is not guaranteed. Broader compatibility, keyboard mapping and long-session limits remain.
-- No commit, tag or publication is included in release preparation.
+- Published as a GitHub pre-release; preserved as the previous stable checkpoint.
 
 ## 1.1.0 — Bluetooth onboarding
 

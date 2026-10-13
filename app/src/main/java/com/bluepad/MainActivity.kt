@@ -56,6 +56,7 @@ class MainActivity : Activity() {
     private lateinit var connect: Button
     private lateinit var disconnect: Button
     private lateinit var reconnectLast: Button
+    private lateinit var copyDiagnostics: Button
     private var renderedInputToken = -1L
     private lateinit var click: Button
     private lateinit var rightClick: Button
@@ -201,6 +202,16 @@ class MainActivity : Activity() {
         connect = button("Connect") { paired.getOrNull(devices.selectedItemPosition)?.let { hid.connect(it) } }
         disconnect = button("Disconnect") { hid.disconnect() }
         reconnectLast = button(getString(R.string.reconnect_last)) { hid.reconnectLast() }
+        copyDiagnostics = button("Copy Diagnostics") {
+            hid.copyDiagnostics { report ->
+                if (!isFinishing && !isDestroyed) {
+                    val clip = ClipData.newPlainText("BluePad connection diagnostics",report)
+                    if (Build.VERSION.SDK_INT >= 33) clip.description.extras = android.os.PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE,true) }
+                    getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
+                    Toast.makeText(this,"Connection diagnostics copied",Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.apply { visibility = View.GONE }
         pad = TouchpadView(this, { dx,dy -> hid.move(dx,dy) }, { wheel -> hid.scroll(wheel) }, { mask, down -> hid.gestureButton(mask,down) }, { steps -> hid.zoom(zoomCompatibility,steps) })
         val preferences = getSharedPreferences("touchpad", MODE_PRIVATE)
         section(R.string.section_connection)
@@ -554,6 +565,8 @@ class MainActivity : Activity() {
         if (BluetoothPermissions.granted(this) && state.bluetooth == "Enabled" && onboarding.pending == BluetoothOnboarding.Action.NONE)
             onboardingStatus.setText(if(state.devices.isEmpty()) R.string.no_paired_computer else R.string.select_host)
         disconnect.isEnabled = visible && (state.connected || state.busy || state.connection == "Reconnecting")
+        copyDiagnostics.visibility = if (state.diagnosticsAvailable) View.VISIBLE else View.GONE
+        copyDiagnostics.isEnabled = visible && state.diagnosticsAvailable
         reconnectLast.isEnabled = visible && state.bluetooth == "Enabled" && state.lastHostAvailable && !state.connected && !state.busy
         pad.isEnabled = visible && state.connected
         click.isEnabled = visible && state.connected

@@ -2,7 +2,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 android {
     namespace = "com.bluepad"
     compileSdk = 36
-    defaultConfig { applicationId = "com.bluepad"; minSdk = 28; targetSdk = 36; versionCode = 4; versionName = "1.2.0" }
+    defaultConfig { applicationId = "com.bluepad"; minSdk = 28; targetSdk = 36; versionCode = 5; versionName = "1.3.0" }
     buildFeatures { buildConfig = true }
     buildTypes {
         getByName("debug") {

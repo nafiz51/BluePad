@@ -8,9 +8,13 @@ import android.os.Build
 
 object BluetoothPermissions {
     const val REQUEST_CODE = 1
-    fun granted(context: Context) = Build.VERSION.SDK_INT < 31 ||
+    fun requiresConnectPermission(api: Int) = api >= 31
+    // The API 31 gate below is centralized and regression-tested. Lint cannot infer it.
+    @android.annotation.SuppressLint("InlinedApi")
+    fun granted(context: Context) = !requiresConnectPermission(Build.VERSION.SDK_INT) ||
         context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+    @android.annotation.SuppressLint("InlinedApi")
     fun request(activity: Activity) {
-        if (Build.VERSION.SDK_INT >= 31) activity.requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_CONNECT), REQUEST_CODE)
+        if (requiresConnectPermission(Build.VERSION.SDK_INT)) activity.requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_CONNECT), REQUEST_CODE)
     }
 }
